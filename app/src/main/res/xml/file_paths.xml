@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 路径配置：只暴露 cache 目录（分享备份时临时落地的文件）。
+  这是资源描述文件，不是布局文件，不违反「禁止 XML 布局」的约束。
+-->
+<paths>
+    <cache-path
+        name="shared"
+        path="." />
+</paths>

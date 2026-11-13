@@ -1,0 +1,81 @@
+build:
+  maxIssues: 0
+
+complexity:
+  LongMethod:
+    threshold: 200
+  LongParameterList:
+    functionThreshold: 12
+    constructorThreshold: 20
+  CyclomaticComplexMethod:
+    threshold: 40
+  TooManyFunctions:
+    thresholdInFiles: 60
+    thresholdInClasses: 60
+    thresholdInInterfaces: 40
+    thresholdInObjects: 60
+  LargeClass:
+    threshold: 1200
+  NestedBlockDepth:
+    threshold: 6
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+
+naming:
+  FunctionNaming:
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    active: true
+  MatchingDeclarationName:
+    active: false
+  MemberNameEqualsClassName:
+    active: false
+  VariableNaming:
+    active: true
+    variablePattern: '[a-z][A-Za-z0-9_]*'
+    privateVariablePattern: '(_)?[a-z][A-Za-z0-9_]*'
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 8
+  UnusedPrivateMember:
+    ignoreAnnotated: ['Preview']
+  UnusedParameter:
+    active: false
+  WildcardImport:
+    active: false
+  ForbiddenComment:
+    active: false
+  UnnecessaryAbstractClass:
+    active: false
+  UnusedPrivateClass:
+    active: false
+  DataClassContainsFunctions:
+    active: false
+  UseDataClass:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  ThrowsCount:
+    max: 6
+
+coroutines:
+  GlobalCoroutineUsage:
+    active: true
+
+potential-bugs:
+  LateinitUsage:
+    active: false
+  UnsafeCallOnNullableType:
+    active: false
+  ImplicitUnitReturnType:
+    active: false
+
+formatting:
+  active: false

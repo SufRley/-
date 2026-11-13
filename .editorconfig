@@ -1,0 +1,20 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+max_line_length = 140
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+# Kotlin 代码规范（ktlint 1.x 通过 .editorconfig 控制规则集）
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+# Compose 组件按官方惯例使用大写驼峰命名（@Composable 函数），关闭该函数命名检查
+ktlint_function_naming_ignore_when_annotated_with = Composable
+ktlint_standard_function-naming = disabled
+ktlint_standard_max-line-length = enabled

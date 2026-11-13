@@ -1,0 +1,4 @@
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.**
+-keepclassmembers @kotlinx.serialization.Serializable class com.xxjz.ledger.** { *; }
+-keep,includedescriptorclasses class com.xxjz.ledger.**$$serializer { *; }

@@ -1,0 +1,123 @@
+package com.xxjz.ledger.feature.ledger
+
+import com.xxjz.ledger.domain.model.Category
+import com.xxjz.ledger.domain.model.Txn
+import com.xxjz.ledger.domain.model.TxnType
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.DisplayName
+import org.junit.jupiter.api.Test
+import java.time.LocalDate
+
+/** M2 明细分组测试：按天分组、日小计口径、排序（AC-26 / AC-12）。 */
+@DisplayName("明细按天分组")
+class LedgerGrouperTest {
+    private val today = LocalDate.of(2025, 11, 13)
+
+    private val categories =
+        mapOf(
+            "food" to Category(id = "food", name = "餐饮", type = TxnType.EXPENSE),
+            "salary" to Category(id = "salary", name = "工资", type = TxnType.INCOME),
+        )
+
+    private fun txn(
+        id: String,
+        type: TxnType,
+        amount: Long,
+        date: LocalDate,
+        categoryId: String? = "food",
+        excluded: Boolean = false,
+        deleted: Boolean = false,
+        minute: Int = 12,
+    ): Txn {
+        val millis = date.atTime(minute, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        return Txn(
+            id = id,
+            type = type,
+            amount = amount,
+            categoryId = categoryId,
+            accountId = "acc",
+            dateTime = millis,
+            dateKey = date.year * 10000 + date.monthValue * 100 + date.dayOfMonth,
+            excludedFromStats = excluded,
+            deletedAt = if (deleted) 1L else null,
+            createdAt = millis,
+            updatedAt = millis,
+        )
+    }
+
+    @Test
+    fun `同一天聚成一组并按日期倒序`() {
+        val list =
+            listOf(
+                txn("a", TxnType.EXPENSE, 1000, today),
+                txn("b", TxnType.EXPENSE, 2000, today.minusDays(1)),
+                txn("c", TxnType.EXPENSE, 500, today, minute = 9),
+            )
+        val groups = LedgerGrouper.group(list, categories, today)
+        assertEquals(2, groups.size)
+        assertEquals(2, groups[0].rows.size)
+        assertEquals(1500L, groups[0].expense)
+        assertEquals("今天", groups[0].title)
+        assertEquals("昨天", groups[1].title)
+    }
+
+    @Test
+    fun `不计入收支的账目仍展示但不进日小计`() {
+        val list =
+            listOf(
+                txn("a", TxnType.EXPENSE, 1000, today),
+                txn("b", TxnType.EXPENSE, 9999, today, excluded = true),
+            )
+        val group = LedgerGrouper.group(list, categories, today).first()
+        assertEquals(2, group.rows.size)
+        assertEquals(1000L, group.expense)
+    }
+
+    @Test
+    fun `转账不计入日小计`() {
+        val list =
+            listOf(
+                txn("a", TxnType.TRANSFER, 8888, today, categoryId = null),
+                txn("b", TxnType.INCOME, 5000, today, categoryId = "salary"),
+            )
+        val group = LedgerGrouper.group(list, categories, today).first()
+        assertEquals(0L, group.expense)
+        assertEquals(5000L, group.income)
+        assertEquals("转账", group.rows.first { it.txn.id == "a" }.categoryName)
+    }
+
+    @Test
+    fun `软删除的记录不出现`() {
+        val list =
+            listOf(
+                txn("a", TxnType.EXPENSE, 1000, today, deleted = true),
+                txn("b", TxnType.EXPENSE, 500, today),
+            )
+        val groups = LedgerGrouper.group(list, categories, today)
+        assertEquals(1, groups.size)
+        assertEquals(1, groups[0].rows.size)
+        assertFalse(groups[0].rows.any { it.txn.id == "a" })
+    }
+
+    @Test
+    fun `组内按时间倒序`() {
+        val list =
+            listOf(
+                txn("early", TxnType.EXPENSE, 100, today, minute = 8),
+                txn("late", TxnType.EXPENSE, 100, today, minute = 20),
+            )
+        val rows = LedgerGrouper.group(list, categories, today).first().rows
+        assertEquals("late", rows[0].txn.id)
+        assertEquals("early", rows[1].txn.id)
+    }
+
+    @Test
+    fun `未知分类回退为未分类`() {
+        val list = listOf(txn("a", TxnType.EXPENSE, 100, today, categoryId = "missing"))
+        val row = LedgerGrouper.group(list, categories, today).first().rows.first()
+        assertEquals("未分类", row.categoryName)
+        assertTrue(row.categoryIcon.isEmpty())
+    }
+}
