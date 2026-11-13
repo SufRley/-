@@ -18,6 +18,66 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * 偏好设置的读取/写入契约。
+ *
+ * 抽出接口是为了让「业务规则」（如设置页的校验、备份页的提醒开关）能在纯 JVM 测试里
+ * 直接换一份内存实现，不必拉起 DataStore 的文件 IO。
+ * 实现见 [SettingsDataStore]；应用内通过 Hilt 拿到的仍是同一个单例。
+ */
+interface SettingsRepository {
+    val settings: Flow<AppSettings>
+
+    val searchHistory: Flow<List<String>>
+
+    suspend fun current(): AppSettings
+
+    suspend fun setDefaultAccount(id: String?)
+
+    suspend fun setDefaultTimeMode(mode: DefaultTimeMode)
+
+    suspend fun setFixedTimeMinutes(minutes: Int)
+
+    suspend fun setDecimalPlaces(places: Int)
+
+    suspend fun setKeypadType(type: KeypadType)
+
+    suspend fun setAmountColorsReversed(reversed: Boolean)
+
+    suspend fun setThemeMode(mode: String)
+
+    suspend fun setRecycleBinDays(days: Int)
+
+    suspend fun setAppLockEnabled(enabled: Boolean)
+
+    suspend fun setLastTxnType(type: TxnType)
+
+    suspend fun setBackupReminder(enabled: Boolean)
+
+    suspend fun markBackedUp(at: Long)
+
+    suspend fun setSavingGoal(cents: Long)
+
+    suspend fun setDailyReminder(enabled: Boolean)
+
+    suspend fun setDailyReminderMinute(minuteOfDay: Int)
+
+    suspend fun setOnboardingDone(done: Boolean)
+
+    suspend fun setPin(
+        hash: String,
+        salt: String,
+    )
+
+    suspend fun clearPin()
+
+    suspend fun restoreFrom(snapshot: BackupSettings)
+
+    suspend fun addSearchKeyword(keyword: String)
+
+    suspend fun clearSearchHistory()
+}
+
 /** 键盘类型：计算器 / 纯数字大按钮。 */
 enum class KeypadType { CALC, NUMBER }
 
@@ -34,10 +94,10 @@ class SettingsDataStore
     @Inject
     constructor(
         @ApplicationContext private val context: Context,
-    ) {
+    ) : SettingsRepository {
         private val store: DataStore<Preferences> = context.appPreferences
 
-        val settings: Flow<AppSettings> =
+        override val settings: Flow<AppSettings> =
             store.data.map { p ->
                 AppSettings(
                     defaultAccountId = p[KEY_DEFAULT_ACCOUNT],
@@ -57,34 +117,66 @@ class SettingsDataStore
                         p[KEY_LAST_TYPE]?.let { runCatching { TxnType.valueOf(it) }.getOrNull() } ?: TxnType.EXPENSE,
                     savingGoalCents = p[KEY_SAVING_GOAL] ?: 0L,
                     lastBackupAt = p[KEY_LAST_BACKUP] ?: 0L,
+                    dailyReminderEnabled = p[KEY_DAILY_REMINDER] ?: false,
+                    dailyReminderMinute = p[KEY_DAILY_REMINDER_MINUTE] ?: 21 * 60,
+                    onboardingDone = p[KEY_ONBOARDING_DONE] ?: false,
+                    pinHash = p[KEY_PIN_HASH],
+                    pinSalt = p[KEY_PIN_SALT],
                 )
             }
 
-        suspend fun current(): AppSettings = settings.first()
+        override suspend fun current(): AppSettings = settings.first()
 
-        suspend fun setDefaultAccount(id: String?) = store.edit { it[KEY_DEFAULT_ACCOUNT] = id ?: "" }
+        override suspend fun setDefaultAccount(id: String?) {
+            store.edit { it[KEY_DEFAULT_ACCOUNT] = id ?: "" }
+        }
 
-        suspend fun setDefaultTimeMode(mode: DefaultTimeMode) = store.edit { it[KEY_DEFAULT_TIME_MODE] = mode.name }
+        override suspend fun setDefaultTimeMode(mode: DefaultTimeMode) {
+            store.edit { it[KEY_DEFAULT_TIME_MODE] = mode.name }
+        }
 
-        suspend fun setFixedTimeMinutes(minutes: Int) = store.edit { it[KEY_FIXED_TIME] = minutes }
+        override suspend fun setFixedTimeMinutes(minutes: Int) {
+            store.edit { it[KEY_FIXED_TIME] = minutes.coerceIn(0, 24 * 60 - 1) }
+        }
 
-        suspend fun setKeypadType(type: KeypadType) = store.edit { it[KEY_KEYPAD] = type.name }
+        /** 金额小数位（0~2），记账面板与详情页统一按这个位数展示。 */
+        override suspend fun setDecimalPlaces(places: Int) {
+            store.edit { it[KEY_DECIMAL] = places.coerceIn(0, 2) }
+        }
 
-        suspend fun setAmountColorsReversed(reversed: Boolean) = store.edit { it[KEY_COLOR_REVERSED] = reversed }
+        override suspend fun setKeypadType(type: KeypadType) {
+            store.edit { it[KEY_KEYPAD] = type.name }
+        }
 
-        suspend fun setThemeMode(mode: String) = store.edit { it[KEY_THEME_MODE] = mode }
+        override suspend fun setAmountColorsReversed(reversed: Boolean) {
+            store.edit { it[KEY_COLOR_REVERSED] = reversed }
+        }
 
-        suspend fun setRecycleBinDays(days: Int) = store.edit { it[KEY_RECYCLE_DAYS] = days }
+        override suspend fun setThemeMode(mode: String) {
+            store.edit { it[KEY_THEME_MODE] = mode }
+        }
 
-        suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_LOCK] = enabled }
+        override suspend fun setRecycleBinDays(days: Int) {
+            store.edit { it[KEY_RECYCLE_DAYS] = days }
+        }
 
-        suspend fun setLastTxnType(type: TxnType) = store.edit { it[KEY_LAST_TYPE] = type.name }
+        override suspend fun setAppLockEnabled(enabled: Boolean) {
+            store.edit { it[KEY_LOCK] = enabled }
+        }
+
+        override suspend fun setLastTxnType(type: TxnType) {
+            store.edit { it[KEY_LAST_TYPE] = type.name }
+        }
 
         /** 每周备份提醒开关（M8-T8）。 */
-        suspend fun setBackupReminder(enabled: Boolean) = store.edit { it[KEY_BACKUP_REMINDER] = enabled }
+        override suspend fun setBackupReminder(enabled: Boolean) {
+            store.edit { it[KEY_BACKUP_REMINDER] = enabled }
+        }
 
         /** 记录最近一次成功导出的时间，用于首页提醒。 */
-        suspend fun markBackedUp(at: Long) = store.edit { it[KEY_LAST_BACKUP] = at }
+        override suspend fun markBackedUp(at: Long) {
+            store.edit { it[KEY_LAST_BACKUP] = at }
+        }
 
         /**
          * 用备份里的快照覆盖本机设置（AC-68）。
@@ -92,7 +184,7 @@ class SettingsDataStore
          * 只覆盖备份里确实存在的业务设置，**不碰手势锁开关**：锁是设备本地的安全策略，
          * 跟着备份文件走等于把别人手机的锁给关了。
          */
-        suspend fun restoreFrom(snapshot: BackupSettings) {
+        override suspend fun restoreFrom(snapshot: BackupSettings) {
             store.edit { p ->
                 p[KEY_DEFAULT_ACCOUNT] = snapshot.defaultAccountId ?: ""
                 p[KEY_DEFAULT_TIME_MODE] = snapshot.defaultTimeMode
@@ -108,16 +200,56 @@ class SettingsDataStore
             }
         }
 
+        /** 每日记账提醒开关（AC-85）。 */
+        override suspend fun setDailyReminder(enabled: Boolean) {
+            store.edit { it[KEY_DAILY_REMINDER] = enabled }
+        }
+
+        /** 每日提醒时间（当天第几分钟，0..1439）。 */
+        override suspend fun setDailyReminderMinute(minuteOfDay: Int) {
+            store.edit { it[KEY_DAILY_REMINDER_MINUTE] = minuteOfDay.coerceIn(0, 24 * 60 - 1) }
+        }
+
+        /** 首次引导是否已完成（AC-88）。 */
+        override suspend fun setOnboardingDone(done: Boolean) {
+            store.edit { it[KEY_ONBOARDING_DONE] = done }
+        }
+
+        /**
+         * 写入手势/PIN 锁的凭据（AC-86）。
+         *
+         * 只存 PBKDF2 派生出的 hash 与随机盐，明文密码从不落盘，也不进备份文件。
+         */
+        override suspend fun setPin(
+            hash: String,
+            salt: String,
+        ) {
+            store.edit {
+                it[KEY_PIN_HASH] = hash
+                it[KEY_PIN_SALT] = salt
+            }
+        }
+
+        /** 关掉应用锁时一并清掉凭据，避免「关了就没人管」的残留。 */
+        override suspend fun clearPin() {
+            store.edit {
+                it.remove(KEY_PIN_HASH)
+                it.remove(KEY_PIN_SALT)
+            }
+        }
+
         /** 结余目标（分），0 表示未设置（AC-48）。 */
-        suspend fun setSavingGoal(cents: Long) = store.edit { it[KEY_SAVING_GOAL] = cents.coerceAtLeast(0) }
+        override suspend fun setSavingGoal(cents: Long) {
+            store.edit { it[KEY_SAVING_GOAL] = cents.coerceAtLeast(0) }
+        }
 
         /** 搜索历史（最多 10 条，最近的在前）。 */
-        val searchHistory: Flow<List<String>> =
+        override val searchHistory: Flow<List<String>> =
             store.data.map { p ->
                 p[KEY_SEARCH_HISTORY]?.split(HISTORY_SEP)?.filter { it.isNotBlank() } ?: emptyList()
             }
 
-        suspend fun addSearchKeyword(keyword: String) {
+        override suspend fun addSearchKeyword(keyword: String) {
             val trimmed = keyword.trim()
             if (trimmed.isEmpty()) return
             store.edit { p ->
@@ -127,7 +259,9 @@ class SettingsDataStore
             }
         }
 
-        suspend fun clearSearchHistory() = store.edit { it.remove(KEY_SEARCH_HISTORY) }
+        override suspend fun clearSearchHistory() {
+            store.edit { it.remove(KEY_SEARCH_HISTORY) }
+        }
 
         private companion object {
             const val DEFAULT_FIXED_MINUTES = 9 * 60
@@ -145,6 +279,11 @@ class SettingsDataStore
             val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
             val KEY_SAVING_GOAL = longPreferencesKey("saving_goal_cents")
             val KEY_LAST_BACKUP = longPreferencesKey("last_backup_at")
+            val KEY_DAILY_REMINDER = booleanPreferencesKey("daily_reminder")
+            val KEY_DAILY_REMINDER_MINUTE = intPreferencesKey("daily_reminder_minute")
+            val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+            val KEY_PIN_HASH = stringPreferencesKey("pin_hash")
+            val KEY_PIN_SALT = stringPreferencesKey("pin_salt")
             const val HISTORY_SEP = "\u0001"
         }
     }
@@ -166,7 +305,20 @@ data class AppSettings(
     val savingGoalCents: Long = 0,
     /** 最近一次导出备份的时间，0 表示从没备份过。 */
     val lastBackupAt: Long = 0,
-)
+    /** 每日记账提醒开关（AC-85）。 */
+    val dailyReminderEnabled: Boolean = false,
+    /** 每日提醒时间（当天第几分钟，默认 21:00）。 */
+    val dailyReminderMinute: Int = 21 * 60,
+    /** 首次引导是否已完成（AC-88）。 */
+    val onboardingDone: Boolean = false,
+    /** PIN 锁的派生 hash；为空表示没设过 PIN。 */
+    val pinHash: String? = null,
+    /** PIN 锁的盐；与 [pinHash] 成对出现。 */
+    val pinSalt: String? = null,
+) {
+    /** 是否已设置 PIN（生物识别之外的手动兜底）。 */
+    val hasPin: Boolean get() = !pinHash.isNullOrBlank() && !pinSalt.isNullOrBlank()
+}
 
 /**
  * 距上次备份是否已超过 [days] 天（从没备份过也算「该提醒」）。

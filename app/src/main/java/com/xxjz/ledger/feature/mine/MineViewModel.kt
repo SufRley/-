@@ -2,7 +2,7 @@ package com.xxjz.ledger.feature.mine
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.usecase.AssetSummary
 import com.xxjz.ledger.domain.usecase.GetAssetSummaryUseCase
@@ -30,7 +30,7 @@ class MineViewModel
     constructor(
         accountRepository: AccountRepository,
         summaryUseCase: GetAssetSummaryUseCase,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) : ViewModel() {
         val state: StateFlow<MineUiState> =
             combine(

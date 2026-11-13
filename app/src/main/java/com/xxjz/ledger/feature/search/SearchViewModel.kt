@@ -2,7 +2,7 @@ package com.xxjz.ledger.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.CategoryRepository
@@ -56,7 +56,7 @@ class SearchViewModel
     constructor(
         private val txnRepository: TxnRepository,
         private val categoryRepository: CategoryRepository,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) : ViewModel() {
         private val query = MutableStateFlow("")
         private val type = MutableStateFlow<TxnType?>(null)

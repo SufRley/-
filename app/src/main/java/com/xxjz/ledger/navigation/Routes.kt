@@ -67,6 +67,11 @@ object Routes {
     const val BACKUP = "backup"
     const val CSV_EXPORT = "csv_export"
     const val TRASH = "trash"
+
+    /** M9：分类/标签/商家管理 P20、设置 P21、首次引导 P00。 */
+    const val MANAGE = "manage"
+    const val SETTINGS = "settings"
+    const val ONBOARDING = "onboarding"
 }
 
 /** 底部四个 Tab 的定义，顺序与底部栏一致。 */

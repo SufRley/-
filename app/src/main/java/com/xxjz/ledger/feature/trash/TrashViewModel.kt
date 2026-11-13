@@ -3,7 +3,7 @@ package com.xxjz.ledger.feature.trash
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.Txn
@@ -72,7 +72,7 @@ class TrashViewModel
         private val txnRepository: TxnRepository,
         private val accountRepository: AccountRepository,
         private val budgetRepository: BudgetRepository,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
         private val cleanup: TrashCleanupUseCase,
     ) : ViewModel() {
         private val _state = MutableStateFlow(TrashState())

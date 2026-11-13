@@ -3,7 +3,7 @@ package com.xxjz.ledger.feature.ledger
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.datastore.needsBackupReminder
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.repository.CategoryRepository
@@ -52,7 +52,7 @@ class LedgerViewModel
         private val txnRepository: TxnRepository,
         private val categoryRepository: CategoryRepository,
         private val templateRepository: TemplateRepository,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) : ViewModel() {
         private val month = MutableStateFlow(YearMonth.now())
 

@@ -9,7 +9,7 @@ import com.xxjz.ledger.data.backup.BackupFailure
 import com.xxjz.ledger.data.backup.BackupPayload
 import com.xxjz.ledger.data.backup.BackupPayloadBuilder
 import com.xxjz.ledger.data.backup.BackupStats
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.io.DocumentIo
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.domain.usecase.RestoreBackupUseCase
@@ -91,7 +91,7 @@ class BackupViewModel
     constructor(
         private val builder: BackupPayloadBuilder,
         private val codec: BackupCodec,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
         private val io: DocumentIo,
     ) : ViewModel() {
         /** 写入调度器；测试里换成 Unconfined，避免真实 IO 线程与断言抢跑。 */

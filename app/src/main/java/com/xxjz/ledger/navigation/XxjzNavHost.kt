@@ -3,6 +3,7 @@ package com.xxjz.ledger.navigation
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -18,12 +19,17 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.xxjz.ledger.core.common.ShortcutAction
+import com.xxjz.ledger.core.common.StartDestination
+import com.xxjz.ledger.core.common.readOnboardingDone
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.feature.account.AccountDetailScreen
 import com.xxjz.ledger.feature.account.AccountListScreen
 import com.xxjz.ledger.feature.backup.BackupScreen
 import com.xxjz.ledger.feature.budget.BudgetEditScreen
 import com.xxjz.ledger.feature.budget.BudgetScreen
 import com.xxjz.ledger.feature.calendar.CalendarScreen
+import com.xxjz.ledger.feature.category.CategoryManageScreen
 import com.xxjz.ledger.feature.debt.DebtDetailScreen
 import com.xxjz.ledger.feature.debt.DebtListScreen
 import com.xxjz.ledger.feature.detail.TxnDetailScreen
@@ -32,6 +38,7 @@ import com.xxjz.ledger.feature.editor.EditorViewModel
 import com.xxjz.ledger.feature.export.CsvExportScreen
 import com.xxjz.ledger.feature.ledger.LedgerScreen
 import com.xxjz.ledger.feature.mine.MineScreen
+import com.xxjz.ledger.feature.onboarding.OnboardingScreen
 import com.xxjz.ledger.feature.recurring.RecurringEditScreen
 import com.xxjz.ledger.feature.recurring.RecurringListScreen
 import com.xxjz.ledger.feature.reimbursement.ReimbursementScreen
@@ -39,6 +46,7 @@ import com.xxjz.ledger.feature.report.CategoryDrillScreen
 import com.xxjz.ledger.feature.report.ReportScreen
 import com.xxjz.ledger.feature.report.YearSummaryScreen
 import com.xxjz.ledger.feature.search.SearchScreen
+import com.xxjz.ledger.feature.settings.SettingsScreen
 import com.xxjz.ledger.feature.template.TemplateListScreen
 import com.xxjz.ledger.feature.trash.TrashScreen
 
@@ -55,15 +63,30 @@ fun XxjzApp(
     onAdd: () -> Unit = {},
     routeOverride: String? = null,
     onRouteChange: ((String) -> Unit)? = null,
+    /** 桌面快捷方式落点（AC-84）；为 null 表示普通启动。 */
+    shortcut: ShortcutAction? = null,
+    onShortcutConsumed: () -> Unit = {},
+    settings: SettingsRepository,
 ) {
     var editorOpen by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var templateId by remember { mutableStateOf<String?>(null) }
     var editorKey by remember { mutableIntStateOf(0) }
+
+    // 首屏落点：null 表示还在读引导标记（几十毫秒的磁盘读），读完再建 NavHost，
+    // 避免先闪一下明细页再跳到引导（那样返回栈里会多一层，用户按返回会很怪）。
+    var startDestination by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (startDestination == null) {
+            startDestination = StartDestination.decide(readOnboardingDone(settings), shortcut)
+        }
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = routeOverride ?: backStackEntry?.destination?.route
     val isDetail =
-        route == Routes.SEARCH ||
+        startDestination == Routes.ONBOARDING && route == Routes.ONBOARDING ||
+            route == Routes.SEARCH ||
             route == Routes.CALENDAR ||
             route?.startsWith("txn/") == true ||
             route?.startsWith("account/") == true ||
@@ -78,6 +101,8 @@ fun XxjzApp(
             route == Routes.BACKUP ||
             route == Routes.CSV_EXPORT ||
             route == Routes.TRASH ||
+            route == Routes.MANAGE ||
+            route == Routes.SETTINGS ||
             route?.startsWith("debt/") == true ||
             route?.startsWith("drill/") == true
 
@@ -92,6 +117,17 @@ fun XxjzApp(
     }
 
     Surface(modifier = Modifier.fillMaxSize()) {
+        // 快捷方式只在挂载时消费一次：`shortcut` 被置空后就什么都不做，
+        // 不会因为重组反复弹面板或反复跳页。
+        LaunchedEffect(shortcut) {
+            val action = shortcut ?: return@LaunchedEffect
+            when (action) {
+                ShortcutAction.NEW_EXPENSE -> openEditor()
+                ShortcutAction.OPEN_REPORT -> navController.navigate(Routes.REPORT)
+                ShortcutAction.OPEN_SEARCH -> navController.navigate(Routes.SEARCH)
+            }
+            onShortcutConsumed()
+        }
         MainScreen(
             currentRoute = route,
             showBottomBar = !isDetail,
@@ -108,11 +144,25 @@ fun XxjzApp(
                 openEditor()
             },
         ) {
+            val start = startDestination
+            if (start == null) {
+                // 还在读引导标记：留白，别先渲染主界面（理由见上面 startDestination 的注释）
+                return@MainScreen
+            }
             NavHost(
                 navController = navController,
-                startDestination = Routes.LEDGER,
+                startDestination = start,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                composable(Routes.ONBOARDING) {
+                    OnboardingScreen(
+                        onDone = {
+                            navController.navigate(Routes.LEDGER) {
+                                popUpTo(Routes.ONBOARDING) { inclusive = true }
+                            }
+                        },
+                    )
+                }
                 composable(Routes.LEDGER) {
                     LedgerScreen(
                         onAdd = { openEditor() },
@@ -247,6 +297,12 @@ fun XxjzApp(
                 composable(Routes.TRASH) {
                     TrashScreen(onBack = { navController.popBackStack() })
                 }
+                composable(Routes.MANAGE) {
+                    CategoryManageScreen(onBack = { navController.popBackStack() })
+                }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(onBack = { navController.popBackStack() })
+                }
                 composable(Routes.MINE) {
                     MineScreen(
                         onOpenAccounts = { navController.navigate(Routes.ACCOUNTS) },
@@ -257,6 +313,8 @@ fun XxjzApp(
                         onOpenBackup = { navController.navigate(Routes.BACKUP) },
                         onOpenCsvExport = { navController.navigate(Routes.CSV_EXPORT) },
                         onOpenTrash = { navController.navigate(Routes.TRASH) },
+                        onOpenManage = { navController.navigate(Routes.MANAGE) },
+                        onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     )
                 }
             }

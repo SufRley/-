@@ -533,6 +533,7 @@ class CategoryRepositoryImpl
     @Inject
     constructor(
         private val dao: CategoryDao,
+        private val txnDao: TxnDao,
     ) : CategoryRepository {
         override fun observeAll(): Flow<List<Category>> = dao.observeAll().map { list -> list.map { it.toModel() } }
 
@@ -559,6 +560,24 @@ class CategoryRepositoryImpl
         override suspend fun increaseUsage(id: String) = dao.increaseUsage(id)
 
         override suspend fun upsert(category: Category) = dao.upsert(category.toEntity())
+
+        /**
+         * 分类下（含子类）的流水条数。
+         *
+         * 只统计直系子类一级：本 App 的分类树最多两层（大类 → 小类），
+         * 不需要递归；真要支持三层时这里得改成 BFS。
+         */
+        override suspend fun txnCountOf(id: String): Int {
+            val children = dao.childrenOf(id).map { it.id }
+            return (listOf(id) + children).sumOf { txnDao.usageCountOf(it) }
+        }
+
+        override suspend fun setHidden(
+            id: String,
+            hidden: Boolean,
+        ) = dao.setHidden(id, hidden)
+
+        override suspend fun delete(id: String) = dao.delete(id)
     }
 
 @Singleton
@@ -598,6 +617,8 @@ class TagRepositoryImpl
         }
 
         override suspend fun tagIdsOf(txnId: String): List<String> = dao.tagIdsOf(txnId)
+
+        override suspend fun delete(id: String) = dao.delete(id)
     }
 
 @Singleton
@@ -619,6 +640,20 @@ class MerchantRepositoryImpl
             dao.insert(merchant)
             return Merchant(id = merchant.id, name = merchant.name, usageCount = 1)
         }
+
+        override suspend fun listAll(): List<Merchant> =
+            dao.listAll().map { Merchant(id = it.id, name = it.name, usageCount = it.usageCount) }
+
+        /** 改名走 upsert：先按 id 取原行，改名字后整体写回，保留 usageCount。 */
+        override suspend fun rename(
+            id: String,
+            name: String,
+        ) {
+            val existing = dao.listAll().firstOrNull { it.id == id } ?: return
+            dao.insert(existing.copy(name = name.trim()))
+        }
+
+        override suspend fun delete(id: String) = dao.delete(id)
     }
 
 @Singleton

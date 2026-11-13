@@ -3,6 +3,9 @@
 
     <!-- 单机版：不声明 INTERNET 权限（AC-90） -->
 
+    <!-- 每日记账提醒（AC-85）；Android 13+ 需运行时申请 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name=".XxjzApplication"
         android:allowBackup="false"
@@ -19,7 +22,23 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- 本月摘要小组件（AC-83） -->
+        <receiver
+            android:name=".widget.LedgerWidgetReceiver"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ledger_widget_info" />
+        </receiver>
 
         <!-- 分享备份文件用；只暴露 cache 目录，见 res/xml/file_paths.xml -->
         <provider

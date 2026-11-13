@@ -5,12 +5,16 @@ import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.CategorySum
 import com.xxjz.ledger.domain.model.DaySum
+import com.xxjz.ledger.domain.model.Merchant
+import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
+import com.xxjz.ledger.domain.repository.MerchantRepository
+import com.xxjz.ledger.domain.repository.TagRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import kotlinx.coroutines.flow.Flow
@@ -214,7 +218,12 @@ class FakeCategoryRepository : CategoryRepository {
     val usage = mutableMapOf<String, Int>()
     var categories: List<Category> = emptyList()
 
-    override fun observeAll(): Flow<List<Category>> = flowOf(categories)
+    /** 测试用：直接登记某分类被多少笔流水引用。 */
+    val txnUsage = mutableMapOf<String, Int>()
+
+    private val version = MutableStateFlow(0)
+
+    override fun observeAll(): Flow<List<Category>> = version.map { categories }
 
     override suspend fun listAll(): List<Category> = categories
 
@@ -237,6 +246,26 @@ class FakeCategoryRepository : CategoryRepository {
 
     override suspend fun upsert(category: Category) {
         categories = categories.filter { it.id != category.id } + category
+        version.value += 1
+    }
+
+    /** 该分类（含一级子类）下的流水条数，与真实实现的语义一致。 */
+    override suspend fun txnCountOf(id: String): Int {
+        val ids = setOf(id) + categories.filter { it.parentId == id }.map { it.id }
+        return txnUsage.filterKeys { it in ids }.values.sum()
+    }
+
+    override suspend fun setHidden(
+        id: String,
+        hidden: Boolean,
+    ) {
+        categories = categories.map { if (it.id == id) it.copy(hidden = hidden) else it }
+        version.value += 1
+    }
+
+    override suspend fun delete(id: String) {
+        categories = categories.filter { it.id != id }
+        version.value += 1
     }
 }
 
@@ -316,6 +345,86 @@ class FakeAccountRepository : AccountRepository {
 
     val txnCounts = mutableMapOf<String, Int>()
     val deletedAt = mutableMapOf<String, Long>()
+}
+
+/** 标签仓库的内存实现（M9 管理页用）。 */
+class FakeTagRepository : TagRepository {
+    val items = linkedMapOf<String, Tag>()
+    private val version = MutableStateFlow(0)
+    private var seq = 0
+
+    private val links = mutableMapOf<String, MutableList<String>>()
+
+    override fun observeAll(): Flow<List<Tag>> = version.map { items.values.toList() }
+
+    override suspend fun listAll(): List<Tag> = items.values.toList()
+
+    override fun observeTagIdsOf(txnId: String): Flow<List<String>> = version.map { links[txnId].orEmpty().toList() }
+
+    override suspend fun upsert(tag: Tag): Tag {
+        items[tag.id] = tag
+        version.value += 1
+        return tag
+    }
+
+    override suspend fun findOrCreate(name: String): Tag {
+        items.values.firstOrNull { it.name == name.trim() }?.let { return it }
+        seq += 1
+        return upsert(Tag(id = "tag$seq", name = name.trim()))
+    }
+
+    override suspend fun setTxnTags(
+        txnId: String,
+        tagIds: List<String>,
+    ) {
+        links[txnId] = tagIds.toMutableList()
+        version.value += 1
+    }
+
+    override suspend fun tagIdsOf(txnId: String): List<String> = links[txnId].orEmpty().toList()
+
+    override suspend fun delete(id: String) {
+        items.remove(id)
+        links.values.forEach { it.remove(id) }
+        version.value += 1
+    }
+
+    /** 测试用：某条流水身上还挂着哪些标签。 */
+    fun linksOf(txnId: String): List<String> = links[txnId].orEmpty().toList()
+}
+
+/** 商家仓库的内存实现（M9 管理页用）。 */
+class FakeMerchantRepository : MerchantRepository {
+    val items = linkedMapOf<String, Merchant>()
+    private var seq = 0
+
+    override suspend fun suggest(limit: Int): List<Merchant> = items.values.sortedByDescending { it.usageCount }.take(limit)
+
+    override suspend fun findOrCreate(name: String): Merchant {
+        val trimmed = name.trim()
+        items.values.firstOrNull { it.name == trimmed }?.let { row ->
+            val next = row.copy(usageCount = row.usageCount + 1)
+            items[next.id] = next
+            return next
+        }
+        seq += 1
+        val created = Merchant(id = "m$seq", name = trimmed, usageCount = 1)
+        items[created.id] = created
+        return created
+    }
+
+    override suspend fun listAll(): List<Merchant> = items.values.sortedByDescending { it.usageCount }
+
+    override suspend fun rename(
+        id: String,
+        name: String,
+    ) {
+        items[id]?.let { items[id] = it.copy(name = name.trim()) }
+    }
+
+    override suspend fun delete(id: String) {
+        items.remove(id)
+    }
 }
 
 class FakeTemplateRepository : TemplateRepository {

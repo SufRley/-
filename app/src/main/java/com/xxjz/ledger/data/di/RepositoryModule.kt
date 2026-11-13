@@ -1,6 +1,8 @@
 package com.xxjz.ledger.data.di
 
 import android.content.Context
+import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.io.ContentResolverDocumentIo
 import com.xxjz.ledger.data.io.DocumentIo
 import com.xxjz.ledger.data.repository.AccountRepositoryImpl
@@ -68,6 +70,11 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindRecurringRepository(impl: RecurringRepositoryImpl): RecurringRepository
+
+    /** 偏好设置也按仓库方式绑定：业务层只认接口，测试里能换内存实现。 */
+    @Binds
+    @Singleton
+    abstract fun bindSettingsRepository(impl: SettingsDataStore): SettingsRepository
 }
 
 /** 文件读写通道（SAF）。 */

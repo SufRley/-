@@ -61,6 +61,8 @@ fun MineScreen(
     onOpenBackup: () -> Unit = {},
     onOpenCsvExport: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
+    onOpenManage: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     viewModel: MineViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -73,9 +75,9 @@ fun MineScreen(
             MineEntry("借贷台账", Icons.Outlined.Handshake, true, onOpenDebts),
             MineEntry("备份与恢复", Icons.Outlined.Backup, true, onOpenBackup),
             MineEntry("导出 CSV", Icons.Outlined.TableChart, true, onOpenCsvExport),
-            MineEntry("分类管理", Icons.Outlined.Category, false) {},
+            MineEntry("分类与标签", Icons.Outlined.Category, true, onOpenManage),
             MineEntry("回收站", Icons.Outlined.Delete, true, onOpenTrash),
-            MineEntry("设置", Icons.Outlined.Settings, false) {},
+            MineEntry("设置", Icons.Outlined.Settings, true, onOpenSettings),
         )
 
     Column(Modifier.fillMaxSize().testTag("screen_mine")) {

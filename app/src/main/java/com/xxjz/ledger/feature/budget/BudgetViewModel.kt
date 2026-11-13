@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetPeriod
 import com.xxjz.ledger.domain.model.BudgetScope
@@ -70,7 +70,7 @@ class BudgetViewModel
         private val txnRepository: TxnRepository,
         private val getBudgetForMonth: GetBudgetForMonthUseCase,
         private val deleteBudget: DeleteBudgetUseCase,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) : ViewModel() {
         private val month = MutableStateFlow(DateUtils.monthKeyOf(DateUtils.today()))
 

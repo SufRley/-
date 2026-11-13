@@ -194,6 +194,19 @@ interface CategoryRepository {
     suspend fun increaseUsage(id: String)
 
     suspend fun upsert(category: Category)
+
+    // ---------- 分类管理（AC-79） ----------
+
+    /** 该分类下（含子类）未删除的流水条数；>0 时不允许删除。 */
+    suspend fun txnCountOf(id: String): Int
+
+    suspend fun setHidden(
+        id: String,
+        hidden: Boolean,
+    )
+
+    /** 物理删除；调用方负责先用 [txnCountOf] 拦住「还有流水」的情况。 */
+    suspend fun delete(id: String)
 }
 
 /** 标签仓库。 */
@@ -215,6 +228,9 @@ interface TagRepository {
     )
 
     suspend fun tagIdsOf(txnId: String): List<String>
+
+    /** 删除标签；关联关系一并清掉，流水本身不受影响。 */
+    suspend fun delete(id: String)
 }
 
 /** 商家仓库。 */
@@ -222,6 +238,16 @@ interface MerchantRepository {
     suspend fun suggest(limit: Int = 10): List<Merchant>
 
     suspend fun findOrCreate(name: String): Merchant
+
+    /** 全部商家，按使用次数倒序（管理页用）。 */
+    suspend fun listAll(): List<Merchant>
+
+    suspend fun rename(
+        id: String,
+        name: String,
+    )
+
+    suspend fun delete(id: String)
 }
 
 /** 模板仓库。 */

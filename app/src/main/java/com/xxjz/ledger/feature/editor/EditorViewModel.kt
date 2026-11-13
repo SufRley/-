@@ -6,7 +6,7 @@ import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.data.datastore.DefaultTimeMode
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.TxnType
@@ -90,7 +90,7 @@ class EditorViewModel
         private val accountRepository: AccountRepository,
         private val templateRepository: TemplateRepository,
         private val saveTxn: SaveTxnUseCase,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) : ViewModel() {
         private val _state = MutableStateFlow(EditorUiState())
         val state: StateFlow<EditorUiState> = _state.asStateFlow()

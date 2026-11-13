@@ -1,4 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">一心记账</string>
+
+    <!-- 小组件（AC-83） -->
+    <string name="widget_description">本月收支与结余，点一下直接记账</string>
+
+    <!-- 桌面快捷方式（AC-84） -->
+    <string name="shortcut_new_expense_short">记一笔</string>
+    <string name="shortcut_new_expense_long">记一笔支出</string>
+    <string name="shortcut_report_short">报表</string>
+    <string name="shortcut_report_long">查看本月报表</string>
+    <string name="shortcut_search_short">搜索</string>
+    <string name="shortcut_search_long">搜索账目</string>
+
+    <!-- 每日提醒（AC-85） -->
+    <string name="reminder_channel_name">记账提醒</string>
+    <string name="reminder_channel_description">每天固定时间提醒你记账</string>
+    <string name="reminder_title">今天还没记账哦</string>
+    <string name="reminder_body">花 10 秒记一笔，心里更有数</string>
+
+    <!-- 应用锁（AC-86） -->
+    <string name="lock_title">一心记账已锁定</string>
+    <string name="lock_subtitle">解锁后查看你的账目</string>
+    <string name="lock_unlock_biometric">用指纹 / 面容解锁</string>
+    <string name="lock_unlock_pin">输入密码解锁</string>
 </resources>

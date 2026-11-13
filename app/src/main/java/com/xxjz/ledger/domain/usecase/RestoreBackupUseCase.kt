@@ -6,7 +6,7 @@ import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.data.backup.BackupPayload
 import com.xxjz.ledger.data.backup.BackupStats
 import com.xxjz.ledger.data.backup.toEntity
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +24,7 @@ class RestoreBackupUseCase
     @Inject
     constructor(
         private val db: AppDatabase,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) {
         /**
          * 故障注入点：清空表之后、写数据之前调用。

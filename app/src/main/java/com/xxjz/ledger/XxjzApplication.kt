@@ -1,8 +1,10 @@
 package com.xxjz.ledger
 
 import android.app.Application
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.seed.Seeder
+import com.xxjz.ledger.data.worker.DailyReminderWorker
 import com.xxjz.ledger.data.worker.RecurringWorker
 import com.xxjz.ledger.data.worker.TrashCleanupWorker
 import com.xxjz.ledger.domain.usecase.RunRecurringUseCase
@@ -26,6 +28,9 @@ class XxjzApplication : Application() {
     @Inject
     lateinit var trashCleanup: TrashCleanupUseCase
 
+    @Inject
+    lateinit var settings: SettingsRepository
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -38,5 +43,13 @@ class XxjzApplication : Application() {
         // 回收站到期清理（AC-76）：启动时清一次 + 每日后台兜底；保留天数为「永久」时内部直接跳过
         scope.launch { runCatching { trashCleanup() } }
         runCatching { TrashCleanupWorker.schedule(this) }
+        // 每日记账提醒（AC-85）：每次冷启动按当前设置重排一次，用户改过时间也能立刻生效
+        runCatching { DailyReminderWorker.ensureChannel(this) }
+        scope.launch {
+            runCatching {
+                val prefs = settings.current()
+                DailyReminderWorker.schedule(this@XxjzApplication, prefs.dailyReminderMinute.takeIf { prefs.dailyReminderEnabled })
+            }
+        }
     }
 }

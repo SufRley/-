@@ -2,7 +2,7 @@ package com.xxjz.ledger.domain.usecase
 
 import androidx.room.withTransaction
 import com.xxjz.ledger.core.common.AppResult
-import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -21,7 +21,7 @@ class TrashCleanupUseCase
     @Inject
     constructor(
         private val db: AppDatabase,
-        private val settings: SettingsDataStore,
+        private val settings: SettingsRepository,
     ) {
         suspend operator fun invoke(now: Long = System.currentTimeMillis()): AppResult<Int> {
             val days = settings.current().recycleBinDays
