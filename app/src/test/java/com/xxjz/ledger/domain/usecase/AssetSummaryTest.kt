@@ -92,15 +92,19 @@ class AssetSummaryTest {
     }
 
     @Test
-    @DisplayName("借贷账户：正余额是净欠，负余额是被欠")
+    @DisplayName("借贷账户：正值是待收（资产），负值是待还（负债）")
     fun debtBothDirections() {
-        val owing = NetAssetsCalculator.compute(listOf(debt("d", 600_00)))
-        assertEquals(600_00, owing.debtLiability)
-        assertEquals(-600_00, owing.net)
+        // v1.9.0 符号约定（PRD 2.1）：待收为正、待还为负。
+        // 负数不再「翻正成资产」——借来的钱要还，它是负债。
+        val borrow = NetAssetsCalculator.compute(listOf(debt("d", -600_00)))
+        assertEquals(0L, borrow.lendOut)
+        assertEquals(600_00, borrow.borrowIn)
+        assertEquals(-600_00, borrow.net)
 
-        val owedToMe = NetAssetsCalculator.compute(listOf(debt("d", -400_00)))
-        assertEquals(0L, owedToMe.debtLiability)
-        assertEquals(400_00, owedToMe.net)
+        val lend = NetAssetsCalculator.compute(listOf(debt("d", 400_00)))
+        assertEquals(400_00, lend.lendOut)
+        assertEquals(0L, lend.borrowIn)
+        assertEquals(400_00, lend.net)
     }
 
     @Test
@@ -120,7 +124,7 @@ class AssetSummaryTest {
     }
 
     @Test
-    @DisplayName("五类账户混合：资产 = 现金 + 储蓄卡 + 投资市值，负债 = 信用 + 借贷 + 透支")
+    @DisplayName("五类账户混合：借贷拆成借出款与借入款两边")
     fun mixedAccounts() {
         val s =
             NetAssetsCalculator.compute(
@@ -129,12 +133,49 @@ class AssetSummaryTest {
                     savings("s", 1_000_00),
                     invest("i", market = 3_000_00),
                     credit("cr", -500_00),
-                    debt("d", 300_00),
+                    debt("lend", 300_00),
+                    debt("borrow", -100_00),
                 ),
             )
-        assertEquals(4_200_00, s.assets)
-        assertEquals(800_00, s.liabilities)
-        assertEquals(3_400_00, s.net)
+        assertEquals(300_00, s.lendOut)
+        assertEquals(100_00, s.borrowIn)
+        assertEquals(4_500_00, s.assets)
+        assertEquals(600_00, s.liabilities)
+        assertEquals(3_900_00, s.net)
+    }
+
+    @Test
+    @DisplayName("借贷四操作净资产不变：两侧账户余额互为相反数")
+    fun debtOpsKeepNetStable() {
+        // 数例来自 PRD 2.2：现金 10000、无借贷 → 借出 3000 → 收款 1000 → 借入 2000 → 还款 500。
+        // 每步把「现金余额 + 借贷余额」一起喂进计算器，净资产必须恒为 10000。
+        fun netOf(
+            cashCents: Long,
+            lendCents: Long,
+            borrowCents: Long,
+        ) = NetAssetsCalculator.compute(
+            listOf(
+                cash("c", cashCents),
+                debt("lend", lendCents),
+                debt("borrow", borrowCents),
+            ),
+        ).net
+
+        assertEquals(10_000_00, netOf(10_000_00, 0, 0))
+        assertEquals(10_000_00, netOf(7_000_00, 3_000_00, 0), "借出 3000：现金 −3000、待收 +3000")
+        assertEquals(10_000_00, netOf(8_000_00, 2_000_00, 0), "收款 1000：现金 +1000、待收 −1000")
+        assertEquals(10_000_00, netOf(10_000_00, 2_000_00, -2_000_00), "借入 2000：现金 +2000、待还 +2000")
+        assertEquals(10_000_00, netOf(9_500_00, 2_000_00, -1_500_00), "还款 500：现金 −500、待还 −500")
+    }
+
+    @Test
+    @DisplayName("坏账核销是唯一改变净资产的借贷操作：待收归零、资产实减")
+    fun writeOffChangesNet() {
+        // 核销后借贷账户余额 0、现金也不回补，净资产比核销前少 3000
+        val before = NetAssetsCalculator.compute(listOf(cash("c", 7_000_00), debt("lend", 3_000_00))).net
+        val after = NetAssetsCalculator.compute(listOf(cash("c", 7_000_00), debt("lend", 0))).net
+        assertEquals(10_000_00, before)
+        assertEquals(7_000_00, after)
     }
 
     @Test

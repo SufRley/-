@@ -100,6 +100,10 @@ data class TxnDto(
     val refundOfTxnId: String? = null,
     val parentTxnId: String? = null,
     val debtId: String? = null,
+    /** 借贷动作（v1.9.0）；老备份无此字段时为 null，不参与余额聚合。 */
+    val debtAction: String? = null,
+    /** 分期计划 id（v1.9.0）；老备份无此字段时为 null。 */
+    val installmentId: String? = null,
     val deletedAt: Long? = null,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,
@@ -125,6 +129,12 @@ data class AccountDto(
     val marketValueCents: Long = 0,
     /** 投资市值是否计入净资产，v1.8.0 新增；老备份无此字段时默认计入。 */
     val includeInNetAssets: Boolean = true,
+    /** 借贷方向（v1.9.0）：LEND / BORROW；老备份无此字段时为 null。 */
+    val debtDirection: String? = null,
+    /** 备注（v1.9.0）；老备份无此字段时为空。 */
+    val note: String = "",
+    /** 借贷约定还款日（v1.9.0）；老备份无此字段时为 null。 */
+    val dueAt: Long? = null,
 )
 
 @Serializable

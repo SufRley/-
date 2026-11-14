@@ -19,7 +19,6 @@ import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Handshake
 import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.TableChart
@@ -57,7 +56,6 @@ fun MineScreen(
     onOpenTemplates: () -> Unit = {},
     onOpenRecurring: () -> Unit = {},
     onOpenReimbursement: () -> Unit = {},
-    onOpenDebts: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
     onOpenCsvExport: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
@@ -72,7 +70,6 @@ fun MineScreen(
             MineEntry("记账模板", Icons.Outlined.Bookmarks, true, onOpenTemplates),
             MineEntry("周期记账", Icons.Outlined.Autorenew, true, onOpenRecurring),
             MineEntry("待报销", Icons.Outlined.Receipt, true, onOpenReimbursement),
-            MineEntry("借贷台账", Icons.Outlined.Handshake, true, onOpenDebts),
             MineEntry("备份与恢复", Icons.Outlined.Backup, true, onOpenBackup),
             MineEntry("导出 CSV", Icons.Outlined.TableChart, true, onOpenCsvExport),
             MineEntry("分类与标签", Icons.Outlined.Category, true, onOpenManage),

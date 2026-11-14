@@ -48,7 +48,6 @@ class NavigationTest {
             ),
             DrawerEntry.entries.map { it.route },
         )
-        assertFalse(DrawerEntry.entries.any { it.route == Routes.DEBTS }, "借贷不进抽屉，入口在账户页")
     }
 
     @ParameterizedTest
@@ -106,7 +105,7 @@ class NavigationTest {
             listOf(
                 Routes.LEDGER, Routes.REPORT, Routes.ACCOUNTS,
                 Routes.SEARCH, Routes.CALENDAR, Routes.TEMPLATES, Routes.SETTINGS,
-                Routes.BACKUP, Routes.TRASH, Routes.ASSET_REPORT, Routes.DEBTS,
+                Routes.BACKUP, Routes.TRASH, Routes.ASSET_REPORT,
                 Routes.REIMBURSEMENT, Routes.ONBOARDING, null, "",
             )
         samples.forEach { r ->

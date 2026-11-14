@@ -5,7 +5,7 @@ import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.CategorySum
 import com.xxjz.ledger.domain.model.DaySum
-import com.xxjz.ledger.domain.model.Debt
+import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.Merchant
 import com.xxjz.ledger.domain.model.RecurringRule
 import com.xxjz.ledger.domain.model.Tag
@@ -13,7 +13,6 @@ import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 
 /** 账目仓库。 */
 interface TxnRepository {
@@ -341,29 +340,11 @@ interface BudgetRepository {
     )
 }
 
-/** 借贷仓库。 */
-interface DebtRepository {
-    fun observeAll(): Flow<List<Debt>>
-
-    suspend fun all(): List<Debt>
-
-    suspend fun byId(id: String): Debt?
-
-    suspend fun repaidOf(debtId: String): Long
-
-    fun observeRepaidOf(debtId: String): Flow<Long>
-
-    suspend fun upsert(debt: Debt)
-
-    suspend fun delete(id: String)
-
-    /**
-     * 未结清借贷的「id → 尚欠金额（分）」（v1.8.0 账户页入口卡用）。
-     *
-     * 只返回尚欠 > 0 的项：已还清或坏账的不该继续出现在「还欠多少」里。
-     */
-    fun observeOutstanding(): Flow<List<Pair<String, Long>>> = observeAll().map { emptyList() }
-}
+/*
+ * 借贷仓库（v1.9.0 删除）：借贷改为一人一账户后，借贷流水就是普通 `type = DEBT` 的 txn，
+ * 通过 AccountRepository / TxnRepository 读写，不再需要独立仓库。旧 `debt` 表仅由
+ * `DebtToAccountMigrator` 搬空。
+ */
 
 /**
  * 周期记账规则仓库。
@@ -392,6 +373,26 @@ interface RecurringRepository {
         runTimes: Int,
         paused: Boolean,
     )
+
+    suspend fun delete(id: String)
+}
+
+/**
+ * 分期计划仓库（v1.9.0 / PRD 3.2）。
+ *
+ * 只有增删查：分期一旦建立就按 [com.xxjz.ledger.domain.model.InstallmentSchedule] 实时算每期金额，
+ * 没有「改期数」这种操作（PRD 七节：提前结清 / 期数变更明确不做）。
+ */
+interface InstallmentRepository {
+    fun observeByAccount(accountId: String): Flow<List<Installment>>
+
+    fun observeAll(): Flow<List<Installment>>
+
+    suspend fun listByAccount(accountId: String): List<Installment>
+
+    suspend fun byId(id: String): Installment?
+
+    suspend fun upsert(plan: Installment)
 
     suspend fun delete(id: String)
 }

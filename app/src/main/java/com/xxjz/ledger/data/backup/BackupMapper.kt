@@ -11,6 +11,7 @@ import com.xxjz.ledger.data.local.entity.TagEntity
 import com.xxjz.ledger.data.local.entity.TemplateEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.parseAccountType
 
 /**
@@ -42,6 +43,8 @@ internal fun TxnEntity.toDto(): TxnDto =
         refundOfTxnId = refundOfTxnId,
         parentTxnId = parentTxnId,
         debtId = debtId,
+        debtAction = debtAction,
+        installmentId = installmentId,
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -71,6 +74,8 @@ internal fun TxnDto.toEntity(): TxnEntity =
         refundOfTxnId = refundOfTxnId,
         parentTxnId = parentTxnId,
         debtId = debtId,
+        debtAction = debtAction,
+        installmentId = installmentId,
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -93,6 +98,9 @@ internal fun AccountEntity.toDto(): AccountDto =
         costCents = costCents,
         marketValueCents = marketValueCents,
         includeInNetAssets = includeInNetAssets,
+        debtDirection = debtDirection,
+        note = note,
+        dueAt = dueAt,
     )
 
 internal fun AccountDto.toEntity(): AccountEntity =
@@ -113,6 +121,10 @@ internal fun AccountDto.toEntity(): AccountEntity =
         costCents = costCents,
         marketValueCents = marketValueCents,
         includeInNetAssets = includeInNetAssets,
+        // 只有借贷账户才写方向，避免给普通账户塞一个无意义的 LEND
+        debtDirection = if (parseAccountType(type) == AccountType.DEBT) (debtDirection ?: "LEND") else null,
+        note = note,
+        dueAt = dueAt,
     )
 
 internal fun CategoryEntity.toDto(): CategoryDto =

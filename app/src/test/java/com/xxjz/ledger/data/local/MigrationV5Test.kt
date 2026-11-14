@@ -1,6 +1,8 @@
 package com.xxjz.ledger.data.local
 
 import com.xxjz.ledger.data.local.db.MIGRATION_4_5
+import com.xxjz.ledger.data.local.db.MIGRATION_5_6
+import com.xxjz.ledger.data.local.db.MIGRATION_6_7
 import com.xxjz.ledger.domain.model.AccountType
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -137,7 +139,11 @@ class MigrationV5Test {
     @Test
     fun readableByDaoAfterMigration() {
         seed("fund", "FUND")
+        // 一路迁到当前 schema 版本：Room 读行时按最新实体表结构取值，
+        // 只跑到 4→5 会缺 v1.9.0 的 debtDirection/note/dueAt 三列
         MIGRATION_4_5.migrate(raw())
+        MIGRATION_5_6.migrate(raw())
+        MIGRATION_6_7.migrate(raw())
 
         val entity = runBlocking { db.accountDao().byId("fund") }
         assertEquals(AccountType.SAVINGS.name, entity?.type)

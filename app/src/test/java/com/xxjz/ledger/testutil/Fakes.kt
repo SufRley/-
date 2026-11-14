@@ -272,20 +272,81 @@ class FakeCategoryRepository : CategoryRepository {
 class FakeAccountRepository : AccountRepository {
     val items = linkedMapOf<String, Account>()
 
+    /**
+     * 流水来源（v1.9.0）。余额不再是账户上的静态数字，而是「初始余额 + 转账流入 −
+     * 转账流出 + 借贷操作侧」——否则借贷用例里每次操作都得手动改账户余额，
+     * 测的就不是 UseCase 而是测试自己对余额的假设。需要真实账户时把它设上即可。
+     */
+    var txns: FakeTxnRepository? = null
+
     /** 变更信号，见类注释。 */
     private val version = MutableStateFlow(0)
 
+    private fun effective(account: Account): Account {
+        val source = txns ?: return account
+        val live = source.items.values.filter { !it.isDeleted }
+        var balance = account.initialBalance
+        live.forEach { txn ->
+            balance += deltaOf(txn, account)
+        }
+        return account.copy(balance = balance)
+    }
+
+    /**
+     * 一笔流水对某个账户的影响。
+     *
+     * 口径与 `AccountDao.observeBalances()` 的聚合 SQL 一致：
+     * - 流出侧（`accountId`）：普通流水减、借贷流水按 `debtAction` 定正负（借贷账户挂在这一侧）；
+     * - 流入侧（`toAccountId`）：普通流水加；借贷流水在这里代表**资金账户**那一侧，
+     *   符号与借贷侧相反，同样由 `debtAction` 决定。
+     */
+    private fun deltaOf(
+        txn: com.xxjz.ledger.domain.model.Txn,
+        account: Account,
+    ): Long {
+        var delta = 0L
+        if (txn.accountId == account.id) {
+            delta +=
+                if (txn.debtAction == null) {
+                    -txn.amount
+                } else {
+                    // 借出 / 还款 = 待收待还增加；收款 / 借入 / 坏账核销 = 减少
+                    debtSign(txn) * txn.amount
+                }
+        }
+        if (txn.toAccountId == account.id) {
+            delta +=
+                if (txn.debtAction == null) {
+                    txn.amount
+                } else {
+                    // 借贷流水里 toAccountId 是资金账户，与借贷侧互为相反数
+                    -debtSign(txn) * txn.amount
+                }
+        }
+        return delta
+    }
+
+    /** 借贷账户一侧的正负号。 */
+    private fun debtSign(txn: com.xxjz.ledger.domain.model.Txn): Long =
+        when (txn.debtAction) {
+            com.xxjz.ledger.domain.model.DebtAction.LEND_OUT,
+            com.xxjz.ledger.domain.model.DebtAction.REPAY,
+            -> 1L
+            else -> -1L
+        }
+
     private fun visible(): List<Account> = items.values.filter { !deletedAt.containsKey(it.id) }
 
-    override fun observeVisible(): Flow<List<Account>> = version.map { items.values.filter { !it.hidden && !deletedAt.containsKey(it.id) } }
+    override fun observeVisible(): Flow<List<Account>> =
+        version.map { items.values.filter { !it.hidden && !deletedAt.containsKey(it.id) }.map(::effective) }
 
-    override fun observeAll(): Flow<List<Account>> = version.map { visible() }
+    override fun observeAll(): Flow<List<Account>> = version.map { visible().map(::effective) }
 
     override fun observeWithBalances(): Flow<List<Account>> = observeAll()
 
-    override suspend fun byId(id: String): Account? = items[id]
+    override suspend fun byId(id: String): Account? = items[id]?.let(::effective)
 
-    override suspend fun balanceOf(id: String): Long = items[id]?.balance ?: 0L
+    override suspend fun balanceOf(id: String): Long = items[id]?.let { effective(it).balance } ?: 0L
 
     override suspend fun upsert(account: Account) {
         items[account.id] = account
@@ -603,57 +664,8 @@ class FakeRecurringRepository : com.xxjz.ledger.domain.repository.RecurringRepos
     }
 }
 
-/** 借贷仓库的内存实现；剩余额按「本金 - 已还」计算，与 DebtDao 聚合一致。 */
-class FakeDebtRepository(
-    private val txnRepository: FakeTxnRepository,
-) : com.xxjz.ledger.domain.repository.DebtRepository {
-    val items = linkedMapOf<String, com.xxjz.ledger.domain.model.Debt>()
-
-    fun put(debt: com.xxjz.ledger.domain.model.Debt) {
-        items[debt.id] = debt
-    }
-
-    private fun repaid(debtId: String): Long =
-        txnRepository.items.values.filter { !it.isDeleted && it.debtId == debtId }.sumOf { it.amount }
-
-    private fun withRepaid(debt: com.xxjz.ledger.domain.model.Debt) = debt.copy(repaid = repaid(debt.id))
-
-    override fun observeAll(): Flow<List<com.xxjz.ledger.domain.model.Debt>> = flowOf(items.values.map { withRepaid(it) })
-
-    override suspend fun all(): List<com.xxjz.ledger.domain.model.Debt> = items.values.map { withRepaid(it) }
-
-    override suspend fun byId(id: String): com.xxjz.ledger.domain.model.Debt? = items[id]?.let { withRepaid(it) }
-
-    override suspend fun repaidOf(debtId: String): Long = repaid(debtId)
-
-    override fun observeRepaidOf(debtId: String): Flow<Long> = flowOf(repaid(debtId))
-
-    override suspend fun upsert(debt: com.xxjz.ledger.domain.model.Debt) {
-        items[debt.id] = debt.copy(repaid = 0)
-    }
-
-    override suspend fun delete(id: String) {
-        items.remove(id)
-    }
-}
-
-/**
- * 借贷仓库的内存实现（v1.8.0 专用）：额外实现 [observeOutstanding]。
- *
- * 用独立的类而不是改 [FakeDebtRepository]，是因为那个 Fake 被多处既有用例依赖，
- * 加接口默认方法会改变它们的行为；这里只补账户页入口卡需要的那条流。
- */
-class FakeDebtRepositoryOutstanding(
-    private val inner: FakeDebtRepository,
-) : com.xxjz.ledger.domain.repository.DebtRepository by inner {
-    override fun observeOutstanding(): Flow<List<Pair<String, Long>>> =
-        inner.observeAll().map { list ->
-            list.filter {
-                !it.settled && !it.writtenOff && it.direction == com.xxjz.ledger.domain.model.DebtDirection.BORROW &&
-                    it.remaining > 0
-            }.map { it.id to it.remaining }
-        }
-}
+// v1.9.0 起借贷不再是独立仓库：一个借贷账户就是一个 Account（type = DEBT），
+// 余额由 AccountDao 聚合流水算出，用 FakeAccountRepository 即可，见 DebtUseCasesTest。
 
 /** SAF 文件通道的内存实现：用 Uri 当 key 存字节，测试里可以直接读出写了什么。 */
 class FakeDocumentIo : com.xxjz.ledger.data.io.DocumentIo {
@@ -674,4 +686,31 @@ class FakeDocumentIo : com.xxjz.ledger.data.io.DocumentIo {
     }
 
     override fun displayName(uri: String): String = displayNameOverride.ifBlank { uri.substringAfterLast('/') }
+}
+
+/** 分期仓库的内存实现（v1.9.0）。 */
+class FakeInstallmentRepository : com.xxjz.ledger.domain.repository.InstallmentRepository {
+    val items = linkedMapOf<String, com.xxjz.ledger.domain.model.Installment>()
+
+    private val version = MutableStateFlow(0)
+
+    override fun observeByAccount(accountId: String): Flow<List<com.xxjz.ledger.domain.model.Installment>> =
+        version.map { items.values.filter { it.accountId == accountId } }
+
+    override fun observeAll(): Flow<List<com.xxjz.ledger.domain.model.Installment>> = version.map { items.values.toList() }
+
+    override suspend fun listByAccount(accountId: String): List<com.xxjz.ledger.domain.model.Installment> =
+        items.values.filter { it.accountId == accountId }
+
+    override suspend fun byId(id: String): com.xxjz.ledger.domain.model.Installment? = items[id]
+
+    override suspend fun upsert(plan: com.xxjz.ledger.domain.model.Installment) {
+        items[plan.id] = plan
+        version.value += 1
+    }
+
+    override suspend fun delete(id: String) {
+        items.remove(id)
+        version.value += 1
+    }
 }

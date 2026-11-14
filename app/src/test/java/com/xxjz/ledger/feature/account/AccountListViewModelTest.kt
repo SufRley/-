@@ -3,14 +3,11 @@ package com.xxjz.ledger.feature.account
 import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
-import com.xxjz.ledger.domain.model.Debt
-import com.xxjz.ledger.domain.model.DebtDirection
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.DeleteAccountUseCase
 import com.xxjz.ledger.domain.usecase.GetAssetSummaryUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
-import com.xxjz.ledger.testutil.FakeDebtRepository
 import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -86,7 +83,6 @@ class AccountListViewModelTest {
         deleteAccount = DeleteAccountUseCase(repo),
         summaryUseCase = GetAssetSummaryUseCase(repo),
         settings = settings,
-        debtRepository = com.xxjz.ledger.testutil.FakeDebtRepository(txnRepo),
     )
 
     @Test
@@ -190,76 +186,6 @@ class AccountListViewModelTest {
             val card = snapshotOf(model).reimbursement
             assertEquals(1, card.count)
             assertEquals(150_00, card.amountCents, "未报金额 = 金额 − 已报")
-        }
-
-    @Test
-    @DisplayName("借贷入口卡：只算未结清的借入，已还清/坏账/借出都不算")
-    fun debtCard() =
-        runTest {
-            val repo = FakeAccountRepository()
-            val txnRepo = FakeTxnRepository()
-            val raw = com.xxjz.ledger.testutil.FakeDebtRepository(txnRepo)
-            val debts = com.xxjz.ledger.testutil.FakeDebtRepositoryOutstanding(raw)
-            val now = 1_700_000_000_000L
-            // 借入 300 已还 100 → 尚欠 200（已还金额由 Fake 的 repaid 账本提供）
-            raw.put(
-                Debt(
-                    id = "d1",
-                    direction = DebtDirection.BORROW,
-                    counterparty = "张三",
-                    principal = 300_00,
-                    startAt = now,
-                ),
-            )
-            // 已结清：不计
-            raw.put(
-                Debt(id = "d2", direction = DebtDirection.BORROW, counterparty = "李四", principal = 500_00, startAt = now, settled = true),
-            )
-            // 坏账：不计
-            raw.put(
-                Debt(
-                    id = "d3",
-                    direction = DebtDirection.BORROW,
-                    counterparty = "王五",
-                    principal = 400_00,
-                    startAt = now,
-                    writtenOff = true,
-                ),
-            )
-            // 借出：是别人欠我，不进「还欠多少」
-            raw.put(Debt(id = "d4", direction = DebtDirection.LEND, counterparty = "赵六", principal = 999_00, startAt = now))
-            // 还款 100 记成一笔 debtId=d1 的流水，Fake 的「剩余额」按本金 − 已还聚合
-            txnRepo.put(
-                Txn(
-                    id = "repay1",
-                    type = TxnType.DEBT,
-                    amount = 100_00,
-                    categoryId = null,
-                    accountId = "c",
-                    dateTime = now,
-                    dateKey = 20261114,
-                    debtId = "d1",
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
-            // FakeDebtRepository.observeAll 是 flowOf(...) 快照流，必须先把数据塞好再建 ViewModel
-
-            val model =
-                AccountListViewModel(
-                    repository = repo,
-                    txnRepository = txnRepo,
-                    deleteAccount = DeleteAccountUseCase(repo),
-                    summaryUseCase = GetAssetSummaryUseCase(repo),
-                    settings = FakeSettingsDataStore(),
-                    debtRepository = debts,
-                )
-            advanceUntilIdle()
-
-            // Fake 的 observeAll 是快照流（不随还款流水变化），「已还」在构造时就已计入
-            val card = snapshotOf(model).debts
-            assertEquals(1, card.count)
-            assertEquals(200_00, card.amountCents)
         }
 
     @Test

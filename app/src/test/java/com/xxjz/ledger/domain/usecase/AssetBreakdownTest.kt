@@ -47,7 +47,7 @@ class AssetBreakdownTest {
                     account("inv", AccountType.INVEST, balance = 9_999_00, market = 3_000_00),
                 ),
             )
-        assertEquals(listOf(1_000_00L, 2_000_00L, 3_000_00L), breakdown.slices.map { it.amount })
+        assertEquals(listOf(1_000_00L, 2_000_00L, 3_000_00L, 0L), breakdown.slices.map { it.amount }, "v1.9.0 起多了「借出款」一段，为零时也占位")
         assertEquals(6_000_00L, breakdown.total, "投资按市值计，不叠加余额")
     }
 
@@ -92,12 +92,13 @@ class AssetBreakdownTest {
             BreakdownCalculator.liabilities(
                 listOf(
                     account("credit", AccountType.CREDIT, balance = -2_000_00),
-                    account("debt", AccountType.DEBT, balance = 500_00),
-                    account("lend", AccountType.DEBT, balance = -800_00),
+                    // v1.9.0 符号约定：待还为负（负债）、待收为正（资产）
+                    account("credit2", AccountType.DEBT, balance = -500_00),
+                    account("lend", AccountType.DEBT, balance = 800_00),
                 ),
             )
         assertEquals(2_000_00L, liability.slices.first { it.label == "信用欠款" }.amount)
-        assertEquals(500_00L, liability.slices.first { it.label == "借贷负债" }.amount)
+        assertEquals(500_00L, liability.slices.first { it.label == "借入款" }.amount)
         assertEquals(0L, liability.slices.first { it.label == "储蓄卡透支" }.amount)
         assertEquals(2_500_00L, liability.total, "被借出去的钱是资产，不是负债")
     }

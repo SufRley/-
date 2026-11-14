@@ -7,7 +7,6 @@ import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.repository.AccountRepository
-import com.xxjz.ledger.domain.repository.DebtRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.AssetSummary
 import com.xxjz.ledger.domain.usecase.DeleteAccountUseCase
@@ -48,15 +47,15 @@ data class AccountListUiState(
     val hidden: List<Account> = emptyList(),
     val showHidden: Boolean = false,
     val reimbursement: EntryCardState = EntryCardState(),
-    val debts: EntryCardState = EntryCardState(),
     val loading: Boolean = true,
 )
 
 /**
- * 账户页（v1.8.0 / PRD 5.1）：五分组列表 + 净资产总览 + 待报销/借贷入口卡。
+ * 账户页（v1.9.0 / PRD 2.5）：五分组列表 + 净资产总览 + 待报销入口卡。
  *
  * 分组顺序固定为 现金 → 储蓄卡 → 信用 → 借贷 → 投资，空组不渲染；
  * 折叠状态放 DataStore，属于界面偏好，不进备份。
+ * v1.9.0 删掉了「借贷台账」入口卡：借贷就是账户，点进分组即达，不再需要独立台账页。
  */
 @HiltViewModel
 class AccountListViewModel
@@ -67,7 +66,6 @@ class AccountListViewModel
         private val deleteAccount: DeleteAccountUseCase,
         private val summaryUseCase: GetAssetSummaryUseCase,
         private val settings: SettingsRepository,
-        private val debtRepository: DebtRepository,
     ) : ViewModel() {
         private val showHidden = MutableStateFlow(false)
         private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
@@ -79,9 +77,7 @@ class AccountListViewModel
                 showHidden,
                 settings.collapsedAccountGroups,
                 txnRepository.observePendingReimbursement(),
-                // 第 5 个来源：借贷台账的未结清净额，入口卡要显示「还欠多少」（PRD F3 / D5）
-                debtRepository.observeOutstanding(),
-            ) { accounts, hiddenVisible, collapsed, pending, outstanding ->
+            ) { accounts, hiddenVisible, collapsed, pending ->
                 val visible = accounts.filter { !it.hidden }
                 val groups =
                     LABELS.mapNotNull { (type, title) ->
@@ -107,7 +103,6 @@ class AccountListViewModel
                     hidden = accounts.filter { it.hidden },
                     showHidden = hiddenVisible,
                     reimbursement = EntryCardState(pending.size, pending.sumOf { it.amount - it.reimbursedAmount }),
-                    debts = EntryCardState(outstanding.count { it.second > 0 }, outstanding.sumOf { it.second }),
                     loading = false,
                 )
             }.stateIn(

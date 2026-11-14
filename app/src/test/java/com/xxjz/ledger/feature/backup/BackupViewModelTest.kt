@@ -7,6 +7,7 @@ import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import com.xxjz.ledger.domain.usecase.RestoreBackupUseCase
 import com.xxjz.ledger.testutil.FakeDocumentIo
 import io.mockk.coEvery
@@ -46,7 +47,7 @@ class RestoreViewModelTest {
     fun setUp() {
         db = TestDatabaseFactory.create()
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = RestoreViewModel(codec, io, RestoreBackupUseCase(db, mockk(relaxed = true)))
+        viewModel = RestoreViewModel(codec, io, RestoreBackupUseCase(db, mockk(relaxed = true), DebtToAccountMigrator(db)))
         viewModel.ioDispatcher = UnconfinedTestDispatcher()
     }
 

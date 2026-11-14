@@ -60,5 +60,52 @@ enum class DebtDirection {
     BORROW,
 }
 
+/**
+ * 借贷动作（v1.9.0 / PRD 2.2）。
+ *
+ * 四种操作 + 一种核销，全部落成 `type = DEBT` 的流水；`amount` 恒为正，
+ * 方向由枚举本身表达，由余额聚合 SQL 翻译成加减号（见 `AccountDao.observeBalances`）。
+ *
+ * | 动作 | 借贷账户 | 资金账户 | 净资产 |
+ * |---|---|---|---|
+ * | 借出 | +   | −   | 不变 |
+ * | 收款 | −   | +   | 不变 |
+ * | 借入 | −   | +   | 不变 |
+ * | 还款 | +   | −   | 不变 |
+ * | 坏账核销 | − | 无 | 减少 |
+ */
+enum class DebtAction {
+    /** 借出：钱从资金账户流向对方。 */
+    LEND_OUT,
+
+    /** 收款：对方把钱还回来。 */
+    COLLECT,
+
+    /** 借入：钱从对方流到我的资金账户。 */
+    BORROW_IN,
+
+    /** 还款：我把钱还给对方。 */
+    REPAY,
+
+    /** 坏账核销：确认收不回来，把待收余额清零。不会让净资产增加，故只允许「我借出」方向。 */
+    WRITE_OFF,
+}
+
+/**
+ * 借贷动作容错解析：v1.9.0 之前的历史 `DEBT` 流水没有这一列（null）。
+ *
+ * 返回 null 表示「这条流水不改变任何账户余额」，余额聚合 SQL 用
+ * `IN ('LEND_OUT','REPAY')` 白名单匹配，未知值天然落空，不会误加。
+ */
+fun parseDebtAction(raw: String?): DebtAction? =
+    when (raw?.trim()?.uppercase()) {
+        "LEND_OUT" -> DebtAction.LEND_OUT
+        "COLLECT" -> DebtAction.COLLECT
+        "BORROW_IN" -> DebtAction.BORROW_IN
+        "REPAY" -> DebtAction.REPAY
+        "WRITE_OFF" -> DebtAction.WRITE_OFF
+        else -> null
+    }
+
 /** 收支方向，用于列表/详情页着色。 */
 enum class Direction { INCOME, EXPENSE, NEUTRAL }

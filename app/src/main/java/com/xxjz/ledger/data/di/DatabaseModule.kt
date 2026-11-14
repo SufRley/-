@@ -6,6 +6,7 @@ import com.xxjz.ledger.data.local.dao.AccountDao
 import com.xxjz.ledger.data.local.dao.BudgetDao
 import com.xxjz.ledger.data.local.dao.CategoryDao
 import com.xxjz.ledger.data.local.dao.DebtDao
+import com.xxjz.ledger.data.local.dao.InstallmentDao
 import com.xxjz.ledger.data.local.dao.LedgerDao
 import com.xxjz.ledger.data.local.dao.MerchantDao
 import com.xxjz.ledger.data.local.dao.MetaDao
@@ -65,6 +66,10 @@ object DatabaseModule {
 
     @Provides
     fun provideDebtDao(db: AppDatabase): DebtDao = db.debtDao()
+
+    @Provides
+    @Singleton
+    fun provideInstallmentDao(db: AppDatabase): InstallmentDao = db.installmentDao()
 
     @Provides
     fun provideLedgerDao(db: AppDatabase): LedgerDao = db.ledgerDao()

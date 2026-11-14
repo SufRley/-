@@ -12,8 +12,6 @@ import com.xxjz.ledger.feature.budget.BudgetEditScreen
 import com.xxjz.ledger.feature.budget.BudgetScreen
 import com.xxjz.ledger.feature.calendar.CalendarScreen
 import com.xxjz.ledger.feature.category.CategoryManageScreen
-import com.xxjz.ledger.feature.debt.DebtDetailScreen
-import com.xxjz.ledger.feature.debt.DebtListScreen
 import com.xxjz.ledger.feature.detail.TxnDetailScreen
 import com.xxjz.ledger.feature.export.CsvExportScreen
 import com.xxjz.ledger.feature.ledger.LedgerScreen
@@ -90,7 +88,6 @@ internal fun NavGraphBuilder.appNavGraph(
             onOpen = { id -> navController.navigate(Routes.accountDetail(id)) },
             onOpenAssetReport = { navController.navigate(Routes.ASSET_REPORT) },
             onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
-            onOpenDebts = { navController.navigate(Routes.DEBTS) },
             onMenu = onMenuClick,
             isRootTab = true,
         )
@@ -181,18 +178,6 @@ internal fun NavGraphBuilder.appNavGraph(
     composable(Routes.REIMBURSEMENT) {
         ReimbursementScreen(onBack = { navController.popBackStack() })
     }
-    composable(Routes.DEBTS) {
-        DebtListScreen(
-            onBack = { navController.popBackStack() },
-            onOpenDetail = { id -> navController.navigate(Routes.debtDetail(id)) },
-        )
-    }
-    composable(
-        route = Routes.DEBT_DETAIL,
-        arguments = listOf(navArgument(Routes.ARG_DEBT_ID) { type = NavType.StringType }),
-    ) {
-        DebtDetailScreen(onBack = { navController.popBackStack() })
-    }
     composable(Routes.BACKUP) {
         BackupScreen(onBack = { navController.popBackStack() })
     }
@@ -214,7 +199,6 @@ internal fun NavGraphBuilder.appNavGraph(
             onOpenTemplates = { navController.navigate(Routes.TEMPLATES) },
             onOpenRecurring = { navController.navigate(Routes.RECURRING) },
             onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
-            onOpenDebts = { navController.navigate(Routes.DEBTS) },
             onOpenBackup = { navController.navigate(Routes.BACKUP) },
             onOpenCsvExport = { navController.navigate(Routes.CSV_EXPORT) },
             onOpenTrash = { navController.navigate(Routes.TRASH) },

@@ -231,6 +231,33 @@ interface TxnDao {
     @Query("SELECT COALESCE(SUM(amount), 0) FROM txn WHERE debtId = :debtId AND deletedAt IS NULL")
     suspend fun repaidTotal(debtId: String): Long
 
+    /**
+     * 旧台账流水改挂到借贷账户（v1.9.0 迁移用）。
+     *
+     * 旧流水 `accountId` 存的是资金账户，新模型要求它指向借贷账户、`toAccountId` 指向资金账户。
+     * 这里把 `toAccountId` 清空而不是搬过去：旧版本借贷流水**从不影响任何余额**，
+     * 若把资金账户搬到 `toAccountId`，升级瞬间现金会凭空虚减（PRD 5.3 明确要求保持自洽）。
+     */
+    @Query(
+        """
+        UPDATE txn SET accountId = :accountId, toAccountId = NULL, debtAction = :action
+        WHERE debtId = :debtId AND type = 'DEBT'
+        """,
+    )
+    suspend fun relinkDebtTxns(
+        accountId: String,
+        debtId: String,
+        action: String,
+    )
+
+    /** 某分期计划的已还期数（按还款流水条数算，一笔还一期）。 */
+    @Query("SELECT COUNT(*) FROM txn WHERE installmentId = :installmentId AND deletedAt IS NULL")
+    suspend fun paidPeriodsOf(installmentId: String): Int
+
+    /** 某分期计划累计已还金额（分）。 */
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM txn WHERE installmentId = :installmentId AND deletedAt IS NULL")
+    suspend fun paidAmountOf(installmentId: String): Long
+
     /** 分类使用次数（AC-05「常用」排序依据）。 */
     @Query("SELECT COUNT(*) FROM txn WHERE categoryId = :categoryId AND deletedAt IS NULL")
     suspend fun usageCountOf(categoryId: String): Int

@@ -38,7 +38,17 @@ data class Txn(
     /** 退款来源：本笔是哪个支出的退款。 */
     val refundOfTxnId: String? = null,
     val parentTxnId: String? = null,
+    /** 旧台账 id（v1.9.0 起仅用于迁移溯源，UI 不再使用）。 */
     val debtId: String? = null,
+    /**
+     * 借贷动作（v1.9.0 / PRD 2.2），仅 `type = DEBT` 的流水有值。
+     *
+     * `accountId` 指向**借贷账户**，`toAccountId` 指向**资金账户**；
+     * 一条流水同时改动两侧余额，因此四种操作都不改变净资产。
+     */
+    val debtAction: DebtAction? = null,
+    /** 分期计划 id（v1.9.0）：这笔还款冲抵的是哪个分期，普通账单还款为空。 */
+    val installmentId: String? = null,
     /** 软删除时间，非空表示在回收站。 */
     val deletedAt: Long? = null,
     val createdAt: Long,
@@ -78,12 +88,29 @@ data class Account(
     val marketValueCents: Long = 0,
     /** 投资账户市值是否计入净资产，默认计入。 */
     val includeInNetAssets: Boolean = true,
+    /**
+     * 借贷方向（v1.9.0 / PRD 2.1），仅 [AccountType.DEBT] 账户有值。
+     *
+     * 建账户时锁定，之后只显示对应的两个操作。null 表示历史数据尚未补齐，
+     * 按「我借出」处理（余额为正时显示为待收更符合直觉）。
+     */
+    val debtDirection: DebtDirection? = null,
+    /** 备注（v1.9.0，从旧台账搬过来的备注也落在这里）。 */
+    val note: String = "",
+    /** 借贷约定还款日（v1.9.0），仅借贷账户使用。 */
+    val dueAt: Long? = null,
 ) {
     /** 投资盈亏（分）= 市值 − 累计成本；非投资账户恒为 0。 */
     val profitCents: Long get() = if (type == AccountType.INVEST) marketValueCents - costCents else 0
 
     /** 投资盈亏率（0..1 的小数），成本为 0 时返回 0 避免除零。 */
     val profitRate: Double get() = if (costCents > 0) profitCents.toDouble() / costCents else 0.0
+
+    /** 是否「我借出」（对方欠我）。v1.9.0 */
+    val isLending: Boolean get() = type == AccountType.DEBT && debtDirection != DebtDirection.BORROW
+
+    /** 是否「我借入」（我欠对方）。v1.9.0 */
+    val isBorrowing: Boolean get() = type == AccountType.DEBT && debtDirection == DebtDirection.BORROW
 }
 
 /** 分类。[parentId] 为空表示大类。 */
@@ -170,28 +197,10 @@ data class RecurringRule(
     val paused: Boolean = false,
 )
 
-/** 借贷记录。剩余额 = 本金 - SUM(还款流水)。 */
-data class Debt(
-    val id: String,
-    val direction: DebtDirection,
-    val counterparty: String,
-    /** 本金（分）。 */
-    val principal: Long,
-    val accountId: String? = null,
-    val startAt: Long,
-    val dueAt: Long? = null,
-    val note: String = "",
-    val settled: Boolean = false,
-    /** 坏账：经确认收不回，计入损失但不影响「已还」口径（AC-65）。 */
-    val writtenOff: Boolean = false,
-    /** 已还 / 已收（分），由聚合查询填充。 */
-    val repaid: Long = 0,
-) {
-    val remaining: Long get() = (principal - repaid).coerceAtLeast(0)
-
-    /** 未结清且已过还款日 → 逾期标红（AC-63）。 */
-    fun isOverdue(now: Long = System.currentTimeMillis()): Boolean = !settled && !writtenOff && dueAt != null && dueAt < now
-}
+/*
+ * 借贷记录模型（v1.9.0 删除）：借贷改为「一人一账户」，余额由 `type = DEBT` 的流水聚合得出，
+ * 不再有「本金 - 已还」的独立实体。旧 `DebtEntity` 仍保留在 schema 里供迁移读取。
+ */
 
 /** 某个月的收支汇总。 */
 data class MonthlySummary(

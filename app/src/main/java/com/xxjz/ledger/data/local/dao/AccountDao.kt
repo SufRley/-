@@ -93,7 +93,15 @@ interface AccountDao {
 
     /**
      * 全部账户的实时余额。
+     *
      * 转账只影响 `accountId`（转出）与 `toAccountId`（转入），手续费从转出账户扣。
+     *
+     * 借贷（v1.9.0 / PRD 2.3）：一条 `type = DEBT` 的流水同时落在两个账户上，
+     * `accountId` 是借贷账户、`toAccountId` 是资金账户，两侧符号相反，因此净资产不变。
+     * `CASE WHEN debtAction IN ('LEND_OUT','REPAY')` 是「这一侧要加钱」的白名单：
+     * - 借贷账户侧：借出 / 还款让待收、待还增加（余额向正方向走）；
+     * - 资金账户侧取相反的号：借出掏钱、收款进钱。
+     * 历史未补 `debtAction` 的流水被 `IS NOT NULL` 挡掉，宁可少算也不会算错。
      */
     @Query(
         """
@@ -114,6 +122,18 @@ interface AccountDao {
                + COALESCE((
                    SELECT SUM(t.amount) FROM txn t
                    WHERE t.deletedAt IS NULL AND t.toAccountId = a.id AND t.type = 'TRANSFER'
+               ), 0)
+               + COALESCE((
+                   SELECT SUM(CASE WHEN t.debtAction IN ('LEND_OUT', 'REPAY') THEN t.amount ELSE -t.amount END)
+                   FROM txn t
+                   WHERE t.deletedAt IS NULL AND t.accountId = a.id AND t.type = 'DEBT'
+                     AND t.debtAction IS NOT NULL
+               ), 0)
+               - COALESCE((
+                   SELECT SUM(CASE WHEN t.debtAction IN ('LEND_OUT', 'REPAY') THEN t.amount ELSE -t.amount END)
+                   FROM txn t
+                   WHERE t.deletedAt IS NULL AND t.toAccountId = a.id AND t.type = 'DEBT'
+                     AND t.debtAction IS NOT NULL
                ), 0) AS balance
         FROM account a
         """,
@@ -139,6 +159,18 @@ interface AccountDao {
                + COALESCE((
                    SELECT SUM(t.amount) FROM txn t
                    WHERE t.deletedAt IS NULL AND t.toAccountId = a.id AND t.type = 'TRANSFER'
+               ), 0)
+               + COALESCE((
+                   SELECT SUM(CASE WHEN t.debtAction IN ('LEND_OUT', 'REPAY') THEN t.amount ELSE -t.amount END)
+                   FROM txn t
+                   WHERE t.deletedAt IS NULL AND t.accountId = a.id AND t.type = 'DEBT'
+                     AND t.debtAction IS NOT NULL
+               ), 0)
+               - COALESCE((
+                   SELECT SUM(CASE WHEN t.debtAction IN ('LEND_OUT', 'REPAY') THEN t.amount ELSE -t.amount END)
+                   FROM txn t
+                   WHERE t.deletedAt IS NULL AND t.toAccountId = a.id AND t.type = 'DEBT'
+                     AND t.debtAction IS NOT NULL
                ), 0) AS balance
         FROM account a WHERE a.id = :id
         """,

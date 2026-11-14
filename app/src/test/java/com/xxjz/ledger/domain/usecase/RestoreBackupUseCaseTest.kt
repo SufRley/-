@@ -10,6 +10,7 @@ import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.entity.AccountEntity
 import com.xxjz.ledger.data.local.entity.CategoryEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -32,7 +33,7 @@ class RestoreBackupUseCaseTest {
     fun setUp() {
         db = TestDatabaseFactory.create()
         settings = mockk(relaxed = true)
-        useCase = RestoreBackupUseCase(db, settings)
+        useCase = RestoreBackupUseCase(db, settings, DebtToAccountMigrator(db))
     }
 
     @After

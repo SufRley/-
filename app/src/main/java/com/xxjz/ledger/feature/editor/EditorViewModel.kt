@@ -8,12 +8,19 @@ import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.data.datastore.DefaultTimeMode
 import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
+import com.xxjz.ledger.domain.model.DebtAction
+import com.xxjz.ledger.domain.model.DebtDirection
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
+import com.xxjz.ledger.domain.usecase.DebtAccountDraft
+import com.xxjz.ledger.domain.usecase.DebtOpDraft
+import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
+import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.domain.usecase.TxnDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -43,8 +50,13 @@ data class EditorUiState(
     val type: TxnType = TxnType.EXPENSE,
     val calc: CalcState = CalcState(),
     val categoryId: String? = null,
+    /** 支出/收入/转账的账户；借贷类型下是**资金账户**（钱从谁那里进出）。 */
     val accountId: String? = null,
     val toAccountId: String? = null,
+    /** 借贷方向（v1.9.0），仅 [TxnType.DEBT] 使用，决定可选哪些借贷账户。 */
+    val debtDirection: DebtDirection = DebtDirection.LEND,
+    /** 借贷账户（对方）。 */
+    val debtAccountId: String? = null,
     val dateTime: Long = System.currentTimeMillis(),
     val note: String = "",
     val feeText: String = "",
@@ -64,6 +76,19 @@ data class EditorUiState(
     val accountName: String? get() = accounts.firstOrNull { it.id == accountId }?.name
 
     val toAccountName: String? get() = accounts.firstOrNull { it.id == toAccountId }?.name
+
+    val debtAccountName: String? get() = accounts.firstOrNull { it.id == debtAccountId }?.name
+
+    /** 当前方向下可选的借贷账户：我借出只能挑「我借出」的人，反之亦然。 */
+    val debtAccounts: List<Account>
+        get() =
+            accounts.filter {
+                it.type == AccountType.DEBT &&
+                    (if (debtDirection == DebtDirection.LEND) it.isLending else it.isBorrowing)
+            }
+
+    /** 资金账户：借贷账户不能当资金账户，否则等于自己借给自己。 */
+    val fundAccounts: List<Account> get() = accounts.filter { it.type != AccountType.DEBT }
 
     /** 当前类型的完整分类树。 */
     val tree: List<Pair<Category, List<Category>>>
@@ -90,6 +115,8 @@ class EditorViewModel
         private val accountRepository: AccountRepository,
         private val templateRepository: TemplateRepository,
         private val saveTxn: SaveTxnUseCase,
+        private val recordDebtOp: RecordDebtOpUseCase,
+        private val saveDebtAccount: SaveDebtAccountUseCase,
         private val settings: SettingsRepository,
     ) : ViewModel() {
         private val _state = MutableStateFlow(EditorUiState())
@@ -117,7 +144,11 @@ class EditorViewModel
                         // 不预填第一个账户：以前 chip 直接显示「现金」，用户根本看不出那是个
                         // 账户选择器，于是「支出不能选账户」（v1.8.1 #4）。改成未选时显示「选账户」。
                         // 只有一个账户时无从选择，自动带上，免得每次多点一次。
-                        s.copy(accounts = list, accountId = s.accountId ?: list.singleOrNull()?.id)
+                        s.copy(
+                            accounts = list,
+                            // 借贷账户不能当资金账户，预选时跳过它
+                            accountId = s.accountId ?: list.filter { it.type != AccountType.DEBT }.singleOrNull()?.id,
+                        )
                     }
                 }
             }
@@ -213,8 +244,54 @@ class EditorViewModel
                 it.copy(
                     type = type,
                     categoryId = if (type == TxnType.EXPENSE || type == TxnType.INCOME) null else it.categoryId,
+                    // 借贷不选分类，资金账户也不能是借贷账户
+                    accountId = if (type == TxnType.DEBT) it.fundAccounts.firstOrNull()?.id else it.accountId,
+                    debtAccountId = if (type == TxnType.DEBT) it.debtAccounts.firstOrNull()?.id else null,
                     dirty = true,
                 )
+            }
+        }
+
+        /** 切换借贷方向：已选的对方账户可能不属于新方向，一并清掉。 */
+        fun setDebtDirection(direction: DebtDirection) {
+            if (direction == _state.value.debtDirection) return
+            _state.update {
+                it.copy(
+                    debtDirection = direction,
+                    debtAccountId = null,
+                    dirty = true,
+                )
+            }
+        }
+
+        fun selectDebtAccount(id: String) = _state.update { it.copy(debtAccountId = id, dirty = true) }
+
+        /**
+         * 记账面板里「还没有借贷账户」时一键新建（PRD 8.3）。
+         *
+         * 只建人、不带本金：本金在金额区填，保存时一并落成一笔借出/借入流水。
+         */
+        fun createDebtAccount(name: String) {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) {
+                _state.update { it.copy(error = "请填写对方姓名") }
+                return
+            }
+            viewModelScope.launch {
+                val result =
+                    saveDebtAccount(
+                        DebtAccountDraft(
+                            counterparty = trimmed,
+                            direction = _state.value.debtDirection,
+                        ),
+                    )
+                when (result) {
+                    is AppResult.Success -> {
+                        _state.update { it.copy(debtAccountId = result.data, error = null, dirty = true) }
+                        _events.emit(EditorEvent.Message("已新建借贷账户「$trimmed」"))
+                    }
+                    is AppResult.Failure -> _state.update { it.copy(error = result.error.message) }
+                }
             }
         }
 
@@ -254,6 +331,12 @@ class EditorViewModel
                 _state.update { it.copy(error = reason) }
                 return
             }
+            // 借贷走独立用例：它不是「记一笔收支」，而是一次资金往来，
+            // 一条流水要同时改动借贷账户与资金账户（PRD 2.2）
+            if (s.type == TxnType.DEBT) {
+                submitDebt(s, cents)
+                return
+            }
             val draft =
                 TxnDraft(
                     id = s.editingId,
@@ -277,6 +360,53 @@ class EditorViewModel
                     is AppResult.Failure -> {
                         _state.update { it.copy(saving = false, error = result.error.message) }
                     }
+                }
+            }
+        }
+
+        /**
+         * 借贷保存：只支持「新的借出 / 新的借入」。
+         *
+         * 收款与还款是对**已有欠款**的动作，必须先看余额，放在借贷账户详情页做（PRD 2.5）。
+         * 这样记账面板里只有一条直线：选方向 → 选对方 → 选资金账户 → 金额 → 保存。
+         */
+        private fun submitDebt(
+            s: EditorUiState,
+            cents: Long,
+        ) {
+            val debtId = s.debtAccountId
+            if (debtId == null) {
+                _state.update { it.copy(error = "请选择借贷账户（对方）") }
+                return
+            }
+            val fundId = s.accountId
+            if (fundId == null) {
+                _state.update { it.copy(error = "请选择资金账户") }
+                return
+            }
+            val action =
+                if (s.debtDirection == DebtDirection.LEND) DebtAction.LEND_OUT else DebtAction.BORROW_IN
+            viewModelScope.launch {
+                _state.update { it.copy(saving = true, error = null) }
+                val result =
+                    recordDebtOp(
+                        DebtOpDraft(
+                            action = action,
+                            debtAccountId = debtId,
+                            fundAccountId = fundId,
+                            amountCents = cents,
+                            at = s.dateTime,
+                            note = s.note,
+                        ),
+                    )
+                when (result) {
+                    is AppResult.Success -> {
+                        runCatching { settings.setLastTxnType(TxnType.DEBT) }
+                        _state.update { it.copy(saving = false) }
+                        _events.emit(EditorEvent.Saved(result.data))
+                    }
+                    is AppResult.Failure ->
+                        _state.update { it.copy(saving = false, error = result.error.message) }
                 }
             }
         }

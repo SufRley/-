@@ -8,6 +8,8 @@ import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
+import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
@@ -69,6 +71,8 @@ class EditorViewModelTest {
                 templateRepository = templateRepo,
                 saveTxn = SaveTxnUseCase(txnRepo, categoryRepo),
                 settings = settings,
+                recordDebtOp = RecordDebtOpUseCase(accountRepo, txnRepo),
+                saveDebtAccount = SaveDebtAccountUseCase(accountRepo, RecordDebtOpUseCase(accountRepo, txnRepo)),
             )
         return vm
     }

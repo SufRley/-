@@ -47,6 +47,10 @@ data class TxnEntity(
     @ColumnInfo(name = "refundOfTxnId") val refundOfTxnId: String?,
     @ColumnInfo(name = "parentTxnId") val parentTxnId: String?,
     @ColumnInfo(name = "debtId") val debtId: String?,
+    /** 借贷动作（v1.9.0）：LEND_OUT / COLLECT / BORROW_IN / REPAY / WRITE_OFF，仅 DEBT 流水有值。 */
+    @ColumnInfo(name = "debtAction") val debtAction: String? = null,
+    /** 分期计划 id（v1.9.0）：这笔还款冲抵的是哪个分期，普通账单还款为空。 */
+    @ColumnInfo(name = "installmentId") val installmentId: String? = null,
     @ColumnInfo(name = "deletedAt") val deletedAt: Long?,
     @ColumnInfo(name = "createdAt") val createdAt: Long,
     @ColumnInfo(name = "updatedAt") val updatedAt: Long,
@@ -73,6 +77,12 @@ data class AccountEntity(
     @ColumnInfo(name = "marketValueCents") val marketValueCents: Long = 0L,
     /** 投资账户市值是否计入净资产，v1.8.0 新增，默认计入。 */
     @ColumnInfo(name = "includeInNetAssets") val includeInNetAssets: Boolean = true,
+    /** 借贷方向（v1.9.0）：LEND / BORROW，仅 DEBT 账户有值。 */
+    @ColumnInfo(name = "debtDirection") val debtDirection: String? = null,
+    /** 备注（v1.9.0），借贷账户承接旧台账的备注。 */
+    val note: String = "",
+    /** 借贷约定还款日（v1.9.0），仅 DEBT 账户使用。 */
+    @ColumnInfo(name = "dueAt") val dueAt: Long? = null,
 )
 
 @Entity(tableName = "category", indices = [Index("parentId"), Index("type", "sortOrder")])
@@ -191,4 +201,32 @@ data class LedgerEntity(
     @PrimaryKey val id: String,
     val name: String,
     @ColumnInfo(name = "isDefault") val isDefault: Boolean,
+)
+
+/**
+ * 分期计划（v1.9.0 / PRD 3.2）。
+ *
+ * 刻意独立成表而不是给 `txn` 加列：分期信息（本金、期数、手续费、摊法）是一组独立数据，
+ * 塞进 `txn` 会迫使 `type` 多出一个「这不是一笔账」的取值，污染全部统计 SQL 与 `when (type)` 分支。
+ *
+ * 「已还几期」不落库，由还款流水实时统计，避免两处数据各算。
+ */
+@Entity(tableName = "installment", indices = [Index("accountId"), Index("txnId")])
+data class InstallmentEntity(
+    @PrimaryKey val id: String,
+    /** TXN（单笔消费）| BILL（整期账单）。 */
+    val scope: String,
+    @ColumnInfo(name = "txnId") val txnId: String?,
+    @ColumnInfo(name = "accountId") val accountId: String,
+    /** 分期本金（分）。 */
+    @ColumnInfo(name = "principalCents") val principalCents: Long,
+    /** 手续费总额（分），可为 0。 */
+    @ColumnInfo(name = "feeCents") val feeCents: Long,
+    /** AVERAGE（均摊）| FIRST（首期一次收齐）。 */
+    @ColumnInfo(name = "feeMode") val feeMode: String,
+    /** 期数，用户输入，2 ~ 60。 */
+    val periods: Int,
+    /** 起始账期 yyyyMM。 */
+    @ColumnInfo(name = "startBillKey") val startBillKey: Int,
+    @ColumnInfo(name = "createdAt") val createdAt: Long,
 )

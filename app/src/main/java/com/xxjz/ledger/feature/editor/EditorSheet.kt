@@ -28,6 +28,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.DebtDirection
 import com.xxjz.ledger.domain.model.TxnType
 
 /**
@@ -69,6 +71,9 @@ fun EditorSheet(
     var showAccount by remember { mutableStateOf(false) }
     var showToAccount by remember { mutableStateOf(false) }
     var showDate by remember { mutableStateOf(false) }
+    var showDebtAccount by remember { mutableStateOf(false) }
+    var showNewDebt by remember { mutableStateOf(false) }
+    var newDebtName by remember { mutableStateOf("") }
 
     LaunchedEffect(editTxnId) {
         if (editTxnId != null) viewModel.loadForEdit(editTxnId)
@@ -96,6 +101,13 @@ fun EditorSheet(
             )
             Spacer(Modifier.height(12.dp))
             // 转出/转入/日期在 360dp 屏上放不进一行，改成自动换行（v1.8.1 #4）
+            if (state.type == TxnType.DEBT) {
+                DebtDirectionSwitch(
+                    current = state.debtDirection,
+                    onSelect = viewModel::setDebtDirection,
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.type == TxnType.EXPENSE || state.type == TxnType.INCOME) {
                     PickerChip(
@@ -104,10 +116,24 @@ fun EditorSheet(
                         onClick = { showCategory = true },
                     )
                 }
+                if (state.type == TxnType.DEBT) {
+                    PickerChip(
+                        label = state.debtAccountName ?: "选对方",
+                        tag = "chip_debt_account",
+                        icon = Icons.Outlined.Handshake,
+                        onClick = { showDebtAccount = true },
+                    )
+                }
                 PickerChip(
                     label =
                         when (state.type) {
                             TxnType.TRANSFER -> "从 ${state.accountName ?: "账户"}"
+                            TxnType.DEBT ->
+                                if (state.debtDirection == DebtDirection.LEND) {
+                                    "从 ${state.accountName ?: "资金账户"}"
+                                } else {
+                                    "到 ${state.accountName ?: "资金账户"}"
+                                }
                             else -> state.accountName ?: "选账户"
                         },
                     tag = "chip_account",
@@ -128,6 +154,23 @@ fun EditorSheet(
                     tag = "chip_date",
                     onClick = { showDate = true },
                 )
+            }
+            if (state.type == TxnType.DEBT && state.debtAccounts.isEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = "还没有${if (state.debtDirection == DebtDirection.LEND) "我借出" else "我借入"}的借贷账户",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(
+                    onClick = {
+                        newDebtName = ""
+                        showNewDebt = true
+                    },
+                    modifier = Modifier.testTag("btn_new_debt_account"),
+                ) {
+                    Text("＋ 新建借贷账户")
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -201,52 +244,139 @@ fun EditorSheet(
         }
     }
 
-    if (showCategory) {
+    EditorPickDialogs(
+        viewModel = viewModel,
+        state = state,
+        show =
+            PickVisibility(
+                category = showCategory,
+                account = showAccount,
+                toAccount = showToAccount,
+                debtAccount = showDebtAccount,
+                newDebt = showNewDebt,
+                date = showDate,
+            ),
+        newDebtName = newDebtName,
+        onNewDebtNameChange = { newDebtName = it },
+        close = { which ->
+            when (which) {
+                Pick.CATEGORY -> showCategory = false
+                Pick.ACCOUNT -> showAccount = false
+                Pick.TO_ACCOUNT -> showToAccount = false
+                Pick.DEBT_ACCOUNT -> showDebtAccount = false
+                Pick.NEW_DEBT -> showNewDebt = false
+                Pick.DATE -> showDate = false
+            }
+        },
+    )
+}
+
+/** 六个选择器弹窗的显隐状态，打包传给 [EditorPickDialogs]，免得参数一长串。 */
+private data class PickVisibility(
+    val category: Boolean,
+    val account: Boolean,
+    val toAccount: Boolean,
+    val debtAccount: Boolean,
+    val newDebt: Boolean,
+    val date: Boolean,
+)
+
+/** 要关掉哪个弹窗。 */
+private enum class Pick { CATEGORY, ACCOUNT, TO_ACCOUNT, DEBT_ACCOUNT, NEW_DEBT, DATE }
+
+/**
+ * 记账面板的所有选择器弹窗（v1.9.0 抽出）。
+ *
+ * 抽出来的原因很实在：拆分前 `EditorSheet` 已经 242 行、圈复杂度 41，都压着 detekt 阈值，
+ * 再往里面加功能就会失控。这些弹窗与面板主体没有数据耦合，只依赖 UiState。
+ */
+@Composable
+private fun EditorPickDialogs(
+    viewModel: EditorViewModel,
+    state: EditorUiState,
+    show: PickVisibility,
+    newDebtName: String,
+    onNewDebtNameChange: (String) -> Unit,
+    close: (Pick) -> Unit,
+) {
+    if (show.category) {
         CategoryPickerDialog(
             tree = state.tree,
             selectedId = state.categoryId,
             onSelect = {
                 viewModel.selectCategory(it)
-                showCategory = false
+                close(Pick.CATEGORY)
             },
-            onDismiss = { showCategory = false },
+            onDismiss = { close(Pick.CATEGORY) },
         )
     }
 
-    if (showAccount) {
+    if (show.account) {
         AccountPickerDialog(
-            accounts = state.accounts,
+            // 借贷类型下资金账户不能是借贷账户本身
+            accounts = if (state.type == TxnType.DEBT) state.fundAccounts else state.accounts,
             selectedId = state.accountId,
-            title = if (state.type == TxnType.TRANSFER) "转出账户" else "选择账户",
+            title =
+                when (state.type) {
+                    TxnType.TRANSFER -> "转出账户"
+                    TxnType.DEBT -> "资金账户"
+                    else -> "选择账户"
+                },
             onSelect = {
                 viewModel.selectAccount(it)
-                showAccount = false
+                close(Pick.ACCOUNT)
             },
-            onDismiss = { showAccount = false },
+            onDismiss = { close(Pick.ACCOUNT) },
         )
     }
 
-    if (showToAccount) {
+    if (show.toAccount) {
         AccountPickerDialog(
             accounts = state.accounts,
             selectedId = state.toAccountId,
             title = "转入账户",
             onSelect = {
                 viewModel.selectToAccount(it)
-                showToAccount = false
+                close(Pick.TO_ACCOUNT)
             },
-            onDismiss = { showToAccount = false },
+            onDismiss = { close(Pick.TO_ACCOUNT) },
         )
     }
 
-    if (showDate) {
+    if (show.debtAccount) {
+        AccountPickerDialog(
+            accounts = state.debtAccounts,
+            selectedId = state.debtAccountId,
+            title = if (state.debtDirection == DebtDirection.LEND) "我借给谁" else "我向谁借",
+            onSelect = {
+                viewModel.selectDebtAccount(it)
+                close(Pick.DEBT_ACCOUNT)
+            },
+            onDismiss = { close(Pick.DEBT_ACCOUNT) },
+        )
+    }
+
+    if (show.newDebt) {
+        NewDebtAccountDialog(
+            direction = state.debtDirection,
+            value = newDebtName,
+            onValueChange = onNewDebtNameChange,
+            onConfirm = {
+                viewModel.createDebtAccount(newDebtName)
+                close(Pick.NEW_DEBT)
+            },
+            onDismiss = { close(Pick.NEW_DEBT) },
+        )
+    }
+
+    if (show.date) {
         EditorDatePickerDialog(
             initialMillis = state.dateTime,
             onPick = {
                 viewModel.setDateTime(it)
-                showDate = false
+                close(Pick.DATE)
             },
-            onDismiss = { showDate = false },
+            onDismiss = { close(Pick.DATE) },
         )
     }
 }
@@ -281,6 +411,8 @@ private fun TypeTabs(
             TxnType.EXPENSE to "支出",
             TxnType.INCOME to "收入",
             TxnType.TRANSFER to "转账",
+            // v1.9.0：借贷从「独立台账」搬进记账面板（PRD 2.5）
+            TxnType.DEBT to "借贷",
         )
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
@@ -420,6 +552,79 @@ private fun Keypad(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/** 借贷方向切换（v1.9.0）：先定方向，再谈人名，避免「同一个人既能借出又能借入」的混乱。 */
+@Composable
+private fun DebtDirectionSwitch(
+    current: DebtDirection,
+    onSelect: (DebtDirection) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        DebtDirection.entries.forEach { direction ->
+            val selected = direction == current
+            val label = if (direction == DebtDirection.LEND) "我借出" else "我借入"
+            Surface(
+                onClick = { onSelect(direction) },
+                shape = RoundedCornerShape(50),
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                modifier = Modifier.weight(1f).testTag("debt_dir_${direction.name.lowercase()}"),
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color =
+                        if (selected) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                )
+            }
+        }
+    }
+}
+
+/** 记账面板内一键新建借贷账户（PRD 8.3）：只填人名，本金在金额区填。 */
+@Composable
+private fun NewDebtAccountDialog(
+    direction: DebtDirection,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    text = if (direction == DebtDirection.LEND) "新建「我借出」账户" else "新建「我借入」账户",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = { onValueChange(it.take(20)) },
+                    label = { Text("对方姓名") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().testTag("new_debt_name"),
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                    TextButton(onClick = onConfirm, modifier = Modifier.testTag("new_debt_confirm")) { Text("新建") }
                 }
             }
         }

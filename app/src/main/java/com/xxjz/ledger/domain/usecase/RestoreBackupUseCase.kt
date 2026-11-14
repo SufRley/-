@@ -9,6 +9,7 @@ import com.xxjz.ledger.data.backup.BackupStats
 import com.xxjz.ledger.data.backup.toEntity
 import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -26,6 +27,7 @@ class RestoreBackupUseCase
     constructor(
         private val db: AppDatabase,
         private val settings: SettingsRepository,
+        private val debtMigrator: DebtToAccountMigrator,
     ) {
         private val tag = "RestoreBackup"
 
@@ -46,6 +48,9 @@ class RestoreBackupUseCase
                 Logger.w(tag, "导入事务失败，已回滚", e)
                 return AppResult.Failure(AppError.Custom("导入失败，数据已回滚到导入前"))
             }
+            // 旧版本备份里带着借贷台账，恢复到 v1.9.0 后要再搬一次成账户；
+            // debt 表为空时内部直接返回，是空操作。
+            runCatching { debtMigrator.run() }
             // 数据已经落库，设置写失败不该让用户误以为整次导入失败
             runCatching { settings.restoreFrom(payload.settings) }
             return AppResult.Success(payload.stats)

@@ -4,7 +4,7 @@ import androidx.room.withTransaction
 import com.xxjz.ledger.data.local.dao.AccountDao
 import com.xxjz.ledger.data.local.dao.BudgetDao
 import com.xxjz.ledger.data.local.dao.CategoryDao
-import com.xxjz.ledger.data.local.dao.DebtDao
+import com.xxjz.ledger.data.local.dao.InstallmentDao
 import com.xxjz.ledger.data.local.dao.MerchantDao
 import com.xxjz.ledger.data.local.dao.MoneyBucket
 import com.xxjz.ledger.data.local.dao.RecurringDao
@@ -14,7 +14,7 @@ import com.xxjz.ledger.data.local.dao.TxnDao
 import com.xxjz.ledger.data.local.entity.AccountEntity
 import com.xxjz.ledger.data.local.entity.BudgetEntity
 import com.xxjz.ledger.data.local.entity.CategoryEntity
-import com.xxjz.ledger.data.local.entity.DebtEntity
+import com.xxjz.ledger.data.local.entity.InstallmentEntity
 import com.xxjz.ledger.data.local.entity.MerchantEntity
 import com.xxjz.ledger.data.local.entity.RecurringRuleEntity
 import com.xxjz.ledger.data.local.entity.TagEntity
@@ -32,8 +32,10 @@ import com.xxjz.ledger.domain.model.BudgetScope
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.CategorySum
 import com.xxjz.ledger.domain.model.DaySum
-import com.xxjz.ledger.domain.model.Debt
 import com.xxjz.ledger.domain.model.DebtDirection
+import com.xxjz.ledger.domain.model.FeeMode
+import com.xxjz.ledger.domain.model.Installment
+import com.xxjz.ledger.domain.model.InstallmentScope
 import com.xxjz.ledger.domain.model.Merchant
 import com.xxjz.ledger.domain.model.RecurringPeriod
 import com.xxjz.ledger.domain.model.RecurringRule
@@ -42,10 +44,11 @@ import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.model.parseAccountType
+import com.xxjz.ledger.domain.model.parseDebtAction
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
-import com.xxjz.ledger.domain.repository.DebtRepository
+import com.xxjz.ledger.domain.repository.InstallmentRepository
 import com.xxjz.ledger.domain.repository.MerchantRepository
 import com.xxjz.ledger.domain.repository.RecurringRepository
 import com.xxjz.ledger.domain.repository.TagRepository
@@ -83,6 +86,7 @@ internal fun TxnEntity.toModel(): Txn =
         refundOfTxnId = refundOfTxnId,
         parentTxnId = parentTxnId,
         debtId = debtId,
+        debtAction = parseDebtAction(debtAction),
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -112,6 +116,8 @@ internal fun Txn.toEntity(): TxnEntity =
         refundOfTxnId = refundOfTxnId,
         parentTxnId = parentTxnId,
         debtId = debtId,
+        debtAction = debtAction?.name,
+        installmentId = installmentId,
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -135,7 +141,14 @@ internal fun AccountEntity.toModel(balance: Long = 0): Account =
         costCents = costCents,
         marketValueCents = marketValueCents,
         includeInNetAssets = includeInNetAssets,
+        debtDirection = parseDebtDirection(debtDirection),
+        note = note,
+        dueAt = dueAt,
     )
+
+/** 借贷方向容错解析：历史账户没有这一列，按「我借出」处理（余额为正时显示为待收更符合直觉）。 */
+internal fun parseDebtDirection(raw: String?): DebtDirection =
+    if (raw?.trim()?.uppercase() == "BORROW") DebtDirection.BORROW else DebtDirection.LEND
 
 internal fun Account.toEntity(): AccountEntity =
     AccountEntity(
@@ -153,6 +166,9 @@ internal fun Account.toEntity(): AccountEntity =
         costCents = costCents,
         marketValueCents = marketValueCents,
         includeInNetAssets = includeInNetAssets,
+        debtDirection = if (type == AccountType.DEBT) (debtDirection ?: DebtDirection.LEND).name else null,
+        note = note,
+        dueAt = dueAt,
     )
 
 internal fun CategoryEntity.toModel(): Category =
@@ -241,35 +257,6 @@ internal fun Budget.toEntity(): BudgetEntity =
 
 /** 预算分类 id 列表的存储分隔符。 */
 private const val BUDGET_CATEGORY_SEP = ","
-
-internal fun DebtEntity.toModel(repaid: Long = 0): Debt =
-    Debt(
-        id = id,
-        direction = DebtDirection.valueOf(direction),
-        counterparty = counterparty,
-        principal = principal,
-        accountId = accountId,
-        startAt = startAt,
-        dueAt = dueAt,
-        note = note,
-        settled = settled,
-        writtenOff = writtenOff,
-        repaid = repaid,
-    )
-
-internal fun Debt.toEntity(): DebtEntity =
-    DebtEntity(
-        id = id,
-        direction = direction.name,
-        counterparty = counterparty,
-        principal = principal,
-        accountId = accountId,
-        startAt = startAt,
-        dueAt = dueAt,
-        note = note,
-        settled = settled,
-        writtenOff = writtenOff,
-    )
 
 internal fun RecurringRuleEntity.toModel(): RecurringRule =
     RecurringRule(
@@ -817,44 +804,6 @@ class BudgetRepositoryImpl
     }
 
 @Singleton
-class DebtRepositoryImpl
-    @Inject
-    constructor(
-        private val dao: DebtDao,
-    ) : DebtRepository {
-        override fun observeAll(): Flow<List<Debt>> = dao.observeAll().map { list -> list.map { it.toModel() } }
-
-        /**
-         * 未结清借贷的尚欠金额（v1.8.0 账户页入口卡）。
-         *
-         * 只统计「未结清、未坏账、尚欠 > 0」且**方向为借入**的（借出是别人欠我，不属于我的负债）；
-         * 借出部分另有「待收」口径，暂不进这张卡，避免把「欠我」和「我欠」糊成一个数。
-         */
-        override fun observeOutstanding(): Flow<List<Pair<String, Long>>> =
-            dao.observeAll().map { list ->
-                // 注意用 toModel(repaidTotal)：observeAll 的实体不带已还金额，直接 toModel() 会算出 remaining=0
-                list.map { it.toModel(dao.repaidTotal(it.id)) }
-                    .filter { !it.settled && !it.writtenOff && it.direction == DebtDirection.BORROW && it.remaining > 0 }
-                    .map { it.id to it.remaining }
-            }
-
-        override suspend fun all(): List<Debt> = dao.listAll().map { it.toModel(dao.repaidTotal(it.id)) }
-
-        override suspend fun byId(id: String): Debt? {
-            val e = dao.byId(id) ?: return null
-            return e.toModel(dao.repaidTotal(debtId = id))
-        }
-
-        override suspend fun repaidOf(debtId: String): Long = dao.repaidTotal(debtId)
-
-        override fun observeRepaidOf(debtId: String): Flow<Long> = dao.observeRepaidTotal(debtId)
-
-        override suspend fun upsert(debt: Debt) = dao.upsert(debt.toEntity())
-
-        override suspend fun delete(id: String) = dao.delete(id)
-    }
-
-@Singleton
 class RecurringRepositoryImpl
     @Inject
     constructor(
@@ -883,3 +832,52 @@ class RecurringRepositoryImpl
 
         override suspend fun delete(id: String) = dao.delete(id)
     }
+
+/** 分期计划仓库实现（v1.9.0 / PRD 3.2）。 */
+@Singleton
+class InstallmentRepositoryImpl
+    @Inject
+    constructor(
+        private val dao: InstallmentDao,
+    ) : InstallmentRepository {
+        override fun observeByAccount(accountId: String): Flow<List<Installment>> =
+            dao.observeByAccount(accountId).map { list -> list.map { it.toModel() } }
+
+        override fun observeAll(): Flow<List<Installment>> = dao.observeAll().map { list -> list.map { it.toModel() } }
+
+        override suspend fun listByAccount(accountId: String): List<Installment> = dao.listByAccount(accountId).map { it.toModel() }
+
+        override suspend fun byId(id: String): Installment? = dao.byId(id)?.toModel()
+
+        override suspend fun upsert(plan: Installment) = dao.upsert(plan.toEntity())
+
+        override suspend fun delete(id: String) = dao.delete(id)
+    }
+
+internal fun InstallmentEntity.toModel(): Installment =
+    Installment(
+        id = id,
+        scope = if (scope == "BILL") InstallmentScope.BILL else InstallmentScope.TXN,
+        txnId = txnId,
+        accountId = accountId,
+        principalCents = principalCents,
+        feeCents = feeCents,
+        feeMode = if (feeMode == "FIRST") FeeMode.FIRST else FeeMode.AVERAGE,
+        periods = periods,
+        startBillKey = startBillKey,
+        createdAt = createdAt,
+    )
+
+internal fun Installment.toEntity(): InstallmentEntity =
+    InstallmentEntity(
+        id = id,
+        scope = scope.name,
+        txnId = txnId,
+        accountId = accountId,
+        principalCents = principalCents,
+        feeCents = feeCents,
+        feeMode = feeMode.name,
+        periods = periods,
+        startBillKey = startBillKey,
+        createdAt = createdAt,
+    )

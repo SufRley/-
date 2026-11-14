@@ -56,12 +56,8 @@ object Routes {
     /** 待报销 P26。 */
     const val REIMBURSEMENT = "reimbursement"
 
-    /** 借贷台账 P18 / 详情 P19。 */
-    const val DEBTS = "debts"
-    const val DEBT_DETAIL = "debt/{debtId}"
-    const val ARG_DEBT_ID = "debtId"
-
-    fun debtDetail(id: String): String = "debt/$id"
+    // 借贷台账（v1.9.0 起取消）：借贷改为「一人一账户」，直接从账户列表进入详情，
+    // 不再有独立的台账页与详情页（PRD 2.5）。
 
     /** M8：备份与恢复 P23、导出 CSV P24、回收站 P22。 */
     const val BACKUP = "backup"

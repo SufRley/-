@@ -240,24 +240,27 @@ object BreakdownCalculator {
         var cash = 0L
         var savings = 0L
         var invest = 0L
+        var lendOut = 0L
         var excluded = 0L
         visible.forEach { account ->
             when (account.type) {
-                AccountType.CASH -> if (account.balance > 0) cash += account.balance else savings += 0
+                AccountType.CASH -> if (account.balance > 0) cash += account.balance
                 AccountType.SAVINGS -> if (account.balance > 0) savings += account.balance
+                // 信用卡多还出来的正余额，算进储蓄卡桶（钱确实在卡里）
                 AccountType.CREDIT -> if (account.balance > 0) savings += account.balance
-                AccountType.DEBT -> if (account.balance < 0) savings += -account.balance
+                // v1.9.0：借贷待收为正，单列「借出款」，不再混进储蓄卡（PRD 2.4）
+                AccountType.DEBT -> if (account.balance > 0) lendOut += account.balance
                 AccountType.INVEST ->
                     if (account.includeInNetAssets) invest += account.marketValueCents else excluded += account.marketValueCents
             }
         }
-        // 现金账户的正余额单列；储蓄卡桶里可能混入了信用卡多还、借贷被欠、透支抵减，统一叫「储蓄卡」
         return AssetBreakdown(
             slices =
                 listOf(
                     AssetSlice("现金", cash),
                     AssetSlice("储蓄卡", savings),
                     AssetSlice("投资", invest),
+                    AssetSlice("借出款", lendOut),
                 ),
             excludedInvest = excluded,
         )
@@ -266,12 +269,13 @@ object BreakdownCalculator {
     fun liabilities(accounts: List<Account>): LiabilityBreakdown {
         val visible = accounts.filter { !it.hidden }
         var credit = 0L
-        var debt = 0L
+        var borrowIn = 0L
         var overdraft = 0L
         visible.forEach { account ->
             when (account.type) {
                 AccountType.CREDIT -> if (account.balance < 0) credit += -account.balance
-                AccountType.DEBT -> if (account.balance > 0) debt += account.balance
+                // v1.9.0：借贷待还为负，单列「借入款」
+                AccountType.DEBT -> if (account.balance < 0) borrowIn += -account.balance
                 AccountType.CASH, AccountType.SAVINGS -> if (account.balance < 0) overdraft += -account.balance
                 AccountType.INVEST -> Unit
             }
@@ -280,7 +284,7 @@ object BreakdownCalculator {
             slices =
                 listOf(
                     AssetSlice("信用欠款", credit),
-                    AssetSlice("借贷负债", debt),
+                    AssetSlice("借入款", borrowIn),
                     AssetSlice("储蓄卡透支", overdraft),
                 ),
         )

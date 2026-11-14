@@ -76,7 +76,6 @@ fun AccountListScreen(
     onOpen: (String) -> Unit,
     onOpenAssetReport: () -> Unit = {},
     onOpenReimbursement: () -> Unit = {},
-    onOpenDebts: () -> Unit = {},
     onMenu: () -> Unit = {},
     /** 作为底部主 Tab 时左上角是 ☰，作为二级页时是返回箭头（PRD D10）。 */
     isRootTab: Boolean = false,
@@ -120,9 +119,7 @@ fun AccountListScreen(
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
             EntryCards(
                 reimbursement = state.reimbursement,
-                debts = state.debts,
                 onOpenReimbursement = onOpenReimbursement,
-                onOpenDebts = onOpenDebts,
             )
             AssetCard(
                 assets = state.summary.assets,
@@ -207,16 +204,15 @@ fun AccountListScreen(
 }
 
 /**
- * 待报销 / 借贷台账入口卡（v1.8.0 / PRD F3 / D5 / D6）。
+ * 待报销入口卡（v1.9.0）。
  *
- * 两张并排，数值直接显示在卡里，让用户不点进去也知道「还有多少钱没报销、还欠多少」。
+ * v1.8.0 这里是「待报销 / 借贷台账」两张并排；v1.9.0 借贷改成一人一账户后，
+ * 台账页消失，账户分组本身就是入口，卡片只剩一张（PRD 2.5）。
  */
 @Composable
 private fun EntryCards(
     reimbursement: EntryCardState,
-    debts: EntryCardState,
     onOpenReimbursement: () -> Unit,
-    onOpenDebts: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
@@ -228,13 +224,6 @@ private fun EntryCards(
             subtitle = if (reimbursement.count == 0) "暂无" else "${reimbursement.count} 笔待处理",
             onClick = onOpenReimbursement,
             modifier = Modifier.weight(1f).testTag("entry_reimbursement"),
-        )
-        EntryCard(
-            title = "借贷台账",
-            value = debts.amountCents,
-            subtitle = if (debts.count == 0) "暂无欠款" else "${debts.count} 笔未结清",
-            onClick = onOpenDebts,
-            modifier = Modifier.weight(1f).testTag("entry_debts"),
         )
     }
 }

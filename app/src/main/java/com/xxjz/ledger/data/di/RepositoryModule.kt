@@ -8,7 +8,7 @@ import com.xxjz.ledger.data.io.DocumentIo
 import com.xxjz.ledger.data.repository.AccountRepositoryImpl
 import com.xxjz.ledger.data.repository.BudgetRepositoryImpl
 import com.xxjz.ledger.data.repository.CategoryRepositoryImpl
-import com.xxjz.ledger.data.repository.DebtRepositoryImpl
+import com.xxjz.ledger.data.repository.InstallmentRepositoryImpl
 import com.xxjz.ledger.data.repository.MerchantRepositoryImpl
 import com.xxjz.ledger.data.repository.RecurringRepositoryImpl
 import com.xxjz.ledger.data.repository.TagRepositoryImpl
@@ -17,7 +17,7 @@ import com.xxjz.ledger.data.repository.TxnRepositoryImpl
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
-import com.xxjz.ledger.domain.repository.DebtRepository
+import com.xxjz.ledger.domain.repository.InstallmentRepository
 import com.xxjz.ledger.domain.repository.MerchantRepository
 import com.xxjz.ledger.domain.repository.RecurringRepository
 import com.xxjz.ledger.domain.repository.TagRepository
@@ -65,16 +65,16 @@ abstract class RepositoryModule {
 
     @Binds
     @Singleton
-    abstract fun bindDebtRepository(impl: DebtRepositoryImpl): DebtRepository
-
-    @Binds
-    @Singleton
     abstract fun bindRecurringRepository(impl: RecurringRepositoryImpl): RecurringRepository
 
     /** 偏好设置也按仓库方式绑定：业务层只认接口，测试里能换内存实现。 */
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: SettingsDataStore): SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindInstallmentRepository(impl: InstallmentRepositoryImpl): InstallmentRepository
 }
 
 /** 文件读写通道（SAF）。 */

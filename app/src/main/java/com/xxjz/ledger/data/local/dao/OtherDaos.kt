@@ -326,4 +326,13 @@ interface DebtDao {
 
     @Query("DELETE FROM debt WHERE id = :id")
     suspend fun delete(id: String)
+
+    /**
+     * 清空台账（v1.9.0 迁移收尾）。
+     *
+     * 数据已经搬成借贷账户，留着只会让备份越背越重、恢复时新旧两份并存。
+     * 表结构不 DROP：真要回滚到 v1.8.x，表的形状还在，能接回旧版本读写。
+     */
+    @Query("DELETE FROM debt")
+    suspend fun deleteAll()
 }

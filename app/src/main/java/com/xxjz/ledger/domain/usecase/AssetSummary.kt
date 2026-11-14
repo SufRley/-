@@ -7,13 +7,18 @@ import kotlinx.coroutines.flow.first
 import javax.inject.Inject
 
 /**
- * 净资产汇总（v1.8.0 口径，PRD 6.3 / D16）：
+ * 净资产汇总（v1.9.0 口径，PRD 2.4）。
  *
- * - 总资产 = Σ现金余额 + Σ储蓄卡余额 + Σ(计入净资产的投资账户市值)
- * - 总负债 = Σ信用账户欠款 + Σ借贷净负债 + Σ现金/储蓄卡透支
+ * - 总资产 = Σ现金余额 + Σ储蓄卡余额 + Σ(计入净资产的投资市值) + Σ借出待收
+ * - 总负债 = Σ信用账户欠款 + Σ借入待还 + Σ现金/储蓄卡透支
  * - 净资产 = 总资产 − 总负债
  *
- * 三处刻意的处理：
+ * 借贷账户的余额**正常参与求和**（正加负减），不做特殊排除：
+ * 借出 1000 时现金 −1000、借出款 +1000，两者抵消，净资产不变——这正是
+ * 「四种操作都不改变净资产」的验收口径（PRD 2.2 的数例）。如果反过来把借出款排除，
+ * 借出后净资产会凭空虚减，那就错了。
+ *
+ * 另外三处刻意的处理：
  * 1. **投资账户按市值计，不叠加余额**。投资账户的「余额」是转入转出的净额，
  *    与市值是同一笔钱的两种表示，两者相加会翻倍；
  * 2. **现金/储蓄卡透支计入负债**。不按类型硬编码正负，防止「储蓄卡透支」被漏算（沿用 v1.7 的思路）；
@@ -28,16 +33,18 @@ data class AssetSummary(
     val investMarket: Long = 0,
     /** 信用类欠款（分），正数表示欠多少。 */
     val creditDebt: Long = 0,
-    /** 借贷净负债（分），正数表示净欠多少。 */
-    val debtLiability: Long = 0,
+    /** 借出待收（分，v1.9.0），正数表示别人还欠我多少，计入资产。 */
+    val lendOut: Long = 0,
+    /** 借入待还（分，v1.9.0），正数表示我还欠别人多少，计入负债。 */
+    val borrowIn: Long = 0,
     /** 现金/储蓄卡透支额（分），正数表示透支了多少，计入负债。 */
     val overdraft: Long = 0,
     /** 未计入净资产的投资市值（分），仅用于提示，不进总资产。 */
     val investExcluded: Long = 0,
 ) {
-    val assets: Long get() = cash + savings + investMarket
+    val assets: Long get() = cash + savings + investMarket + lendOut
 
-    val liabilities: Long get() = creditDebt + debtLiability + overdraft
+    val liabilities: Long get() = creditDebt + borrowIn + overdraft
 
     val net: Long get() = assets - liabilities
 }
@@ -53,7 +60,8 @@ object NetAssetsCalculator {
         var investMarket = 0L
         var investExcluded = 0L
         var creditDebt = 0L
-        var debtLiability = 0L
+        var lendOut = 0L
+        var borrowIn = 0L
         var overdraft = 0L
 
         accounts.filter { !it.hidden }.forEach { account ->
@@ -70,8 +78,9 @@ object NetAssetsCalculator {
                     if (account.balance < 0) creditDebt += -account.balance else savings += account.balance
                 }
                 AccountType.DEBT -> {
-                    // 借贷账户：正余额 = 净欠（借入 > 借出），负余额 = 净被欠
-                    if (account.balance > 0) debtLiability += account.balance else savings += -account.balance
+                    // v1.9.0 符号约定（PRD 2.1）：待收为正、待还为负。
+                    // 正余额 = 别人欠我（资产），负余额 = 我欠别人（负债）。
+                    if (account.balance >= 0) lendOut += account.balance else borrowIn += -account.balance
                 }
                 AccountType.INVEST -> {
                     if (account.includeInNetAssets) {
@@ -88,7 +97,8 @@ object NetAssetsCalculator {
             savings = savings,
             investMarket = investMarket,
             creditDebt = creditDebt,
-            debtLiability = debtLiability,
+            lendOut = lendOut,
+            borrowIn = borrowIn,
             overdraft = overdraft,
             investExcluded = investExcluded,
         )

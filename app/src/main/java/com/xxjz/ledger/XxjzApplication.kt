@@ -4,6 +4,7 @@ import android.app.Application
 import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.seed.Seeder
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import com.xxjz.ledger.data.worker.DailyReminderWorker
 import com.xxjz.ledger.data.worker.RecurringWorker
 import com.xxjz.ledger.data.worker.TrashCleanupWorker
@@ -31,12 +32,21 @@ class XxjzApplication : Application() {
     @Inject
     lateinit var settings: SettingsRepository
 
+    @Inject
+    lateinit var debtMigrator: DebtToAccountMigrator
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
         super.onCreate()
-        // 首启写入预置分类 / 默认账户 / 默认账本（幂等，见 Seeder）
-        scope.launch { runCatching { Seeder.seedIfNeeded(database) } }
+        // 首启写入预置分类 / 默认账户 / 默认账本（幂等，见 Seeder）；
+        // 随后把 v1.8.x 的旧借贷台账搬成借贷账户（v1.9.0，幂等，debt 表空了就跳过）
+        scope.launch {
+            runCatching {
+                Seeder.seedIfNeeded(database)
+                debtMigrator.run()
+            }
+        }
         // 启动补执行 + 每日后台任务双保险（AC-52 / AC-58）。引擎幂等，重复触发不会重复记账。
         scope.launch { runCatching { runRecurring() } }
         runCatching { RecurringWorker.schedule(this) }
