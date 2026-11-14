@@ -34,6 +34,14 @@ class FakeSettingsDataStore(
 
     override suspend fun current(): AppSettings = flow.value
 
+    private val collapsed = MutableStateFlow<Set<String>>(emptySet())
+
+    override val collapsedAccountGroups: kotlinx.coroutines.flow.Flow<Set<String>> = collapsed
+
+    override suspend fun setCollapsedAccountGroups(groups: Set<String>) {
+        collapsed.value = groups
+    }
+
     override suspend fun setDefaultAccount(id: String?) = edit { s -> s.copy(defaultAccountId = id?.takeIf { it.isNotBlank() }) }
 
     override suspend fun setDefaultTimeMode(mode: DefaultTimeMode) = edit { it.copy(defaultTimeMode = mode) }

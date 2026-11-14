@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** 账户详情中的一行流水。 */
@@ -42,7 +43,7 @@ class AccountDetailViewModel
     @Inject
     constructor(
         savedStateHandle: SavedStateHandle,
-        accountRepository: AccountRepository,
+        private val accountRepository: AccountRepository,
         txnRepository: TxnRepository,
         categoryRepository: CategoryRepository,
     ) : ViewModel() {
@@ -79,4 +80,19 @@ class AccountDetailViewModel
                 started = SharingStarted.WhileSubscribed(5_000),
                 initialValue = AccountDetailUiState(),
             )
+
+        /** 改市值（v1.8.0 / PRD F2）：不改流水、不生成记账，只更新市值并留一条资产变化记录。 */
+        fun updateMarketValue(cents: Long) {
+            viewModelScope.launch {
+                accountRepository.updateMarketValue(accountId, cents, System.currentTimeMillis())
+            }
+        }
+
+        /** 是否把该投资账户市值计入净资产（PRD D2）。 */
+        fun setIncludeInNetAssets(include: Boolean) {
+            viewModelScope.launch {
+                val account = accountRepository.byId(accountId) ?: return@launch
+                accountRepository.upsert(account.copy(includeInNetAssets = include))
+            }
+        }
     }

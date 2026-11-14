@@ -35,6 +35,8 @@ data class LedgerUiState(
     val loading: Boolean = true,
     /** 超过 7 天没备份时在首页顶部提示（M8-T8）。 */
     val backupHint: String? = null,
+    /** 底部预算概览卡（v1.8.0 / PRD F4）。 */
+    val budget: BudgetCardState = BudgetCardState(),
 ) {
     val balance: Long get() = income - expense
     val count: Int get() = groups.sumOf { it.rows.size }
@@ -53,6 +55,7 @@ class LedgerViewModel
         private val categoryRepository: CategoryRepository,
         private val templateRepository: TemplateRepository,
         private val settings: SettingsRepository,
+        private val budgetForMonth: com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase,
     ) : ViewModel() {
         private val month = MutableStateFlow(YearMonth.now())
 
@@ -69,17 +72,24 @@ class LedgerViewModel
                         categoryRepository.observeAll(),
                         templateRepository.observeAll(),
                         settings.settings,
-                    ) { txns, categories, templates, pref ->
+                        budgetForMonth.observe(DateUtils.monthKeyOf(ym.atDay(1))),
+                    ) { txns, categories, templates, pref, budgets ->
                         val map = categories.associateBy { it.id }
                         val groups = LedgerGrouper.group(txns, map)
                         val counted = txns.filter { !it.excludedFromStats }
+                        val expenseSum = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.EXPENSE }.sumOf { it.amount }
                         LedgerUiState(
                             monthKey = DateUtils.monthKeyOf(ym.atDay(1)),
                             monthLabel = "${ym.year}年${ym.monthValue}月",
                             income = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.INCOME }.sumOf { it.amount },
-                            expense = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.EXPENSE }.sumOf { it.amount },
+                            expense = expenseSum,
                             groups = groups,
                             templates = templates,
+                            budget =
+                                BudgetCardState.from(
+                                    budgets,
+                                    measuredExpense = expenseSum,
+                                ),
                             loading = false,
                             backupHint =
                                 if (needsBackupReminder(pref.backupReminderEnabled, pref.lastBackupAt, System.currentTimeMillis())) {

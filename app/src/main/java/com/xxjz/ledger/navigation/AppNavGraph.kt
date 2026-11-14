@@ -22,6 +22,7 @@ import com.xxjz.ledger.feature.onboarding.OnboardingScreen
 import com.xxjz.ledger.feature.recurring.RecurringEditScreen
 import com.xxjz.ledger.feature.recurring.RecurringListScreen
 import com.xxjz.ledger.feature.reimbursement.ReimbursementScreen
+import com.xxjz.ledger.feature.report.AssetReportScreen
 import com.xxjz.ledger.feature.report.CategoryDrillScreen
 import com.xxjz.ledger.feature.report.ReportScreen
 import com.xxjz.ledger.feature.report.YearSummaryScreen
@@ -41,6 +42,8 @@ import com.xxjz.ledger.feature.trash.TrashScreen
 internal fun NavGraphBuilder.appNavGraph(
     navController: NavHostController,
     onOpenEditor: (id: String?, templateId: String?) -> Unit,
+    onMenuClick: () -> Unit = {},
+    onAdd: () -> Unit = {},
 ) {
     composable(Routes.ONBOARDING) {
         OnboardingScreen(
@@ -59,6 +62,8 @@ internal fun NavGraphBuilder.appNavGraph(
             onOpenSearch = { navController.navigate(Routes.SEARCH) },
             onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
             onOpenBackup = { navController.navigate(Routes.BACKUP) },
+            onOpenBudget = { navController.navigate(Routes.BUDGET) },
+            onMenu = onMenuClick,
         )
     }
     composable(
@@ -83,7 +88,15 @@ internal fun NavGraphBuilder.appNavGraph(
         AccountListScreen(
             onBack = { navController.popBackStack() },
             onOpen = { id -> navController.navigate(Routes.accountDetail(id)) },
+            onOpenAssetReport = { navController.navigate(Routes.ASSET_REPORT) },
+            onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
+            onOpenDebts = { navController.navigate(Routes.DEBTS) },
+            onMenu = onMenuClick,
+            isRootTab = true,
         )
+    }
+    composable(Routes.ASSET_REPORT) {
+        AssetReportScreen(onBack = { navController.popBackStack() })
     }
     composable(
         route = Routes.ACCOUNT_DETAIL,
@@ -107,6 +120,7 @@ internal fun NavGraphBuilder.appNavGraph(
         ReportScreen(
             onDrill = { id -> navController.navigate(Routes.categoryDrill(id)) },
             onYearSummary = { navController.navigate(Routes.YEAR_SUMMARY) },
+            onMenu = onMenuClick,
         )
     }
     composable(

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -55,6 +56,7 @@ import com.xxjz.ledger.core.designsystem.component.AmountText
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.navigation.AddFab
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
 @Composable
@@ -65,6 +67,8 @@ fun LedgerScreen(
     onOpenSearch: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onOpenBackup: () -> Unit = {},
+    onOpenBudget: () -> Unit = {},
+    onMenu: () -> Unit = {},
     viewModel: LedgerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -93,6 +97,7 @@ fun LedgerScreen(
                 onClickLabel = { showMonthPicker = true },
                 onSearch = onOpenSearch,
                 onCalendar = onOpenCalendar,
+                onMenu = onMenu,
             )
             state.backupHint?.let { hint ->
                 Row(
@@ -127,11 +132,12 @@ fun LedgerScreen(
             if (state.groups.isEmpty() && !state.loading) {
                 EmptyState(
                     title = "这个月还没有账目",
-                    description = "点击下方 ＋ 记下第一笔",
+                    description = "点击右下角 ＋ 记下第一笔",
                     actionText = "记一笔",
                     onAction = onAdd,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f),
                 )
+                BudgetOverviewCard(budget = state.budget, onOpen = onOpenBudget)
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -143,9 +149,18 @@ fun LedgerScreen(
                             TxnItem(row) { onOpen(row.txn.id) }
                         }
                     }
+                    // 预算概览卡固定在列表最下层（v1.8.0 / PRD F4、D7）
+                    item(key = "budget_card") {
+                        BudgetOverviewCard(budget = state.budget, onOpen = onOpenBudget)
+                    }
                 }
             }
         }
+        // 悬浮「＋」只在明细页出现（PRD D9）
+        AddFab(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 24.dp),
+            onClick = onAdd,
+        )
         SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
 }
@@ -158,11 +173,15 @@ private fun MonthHeader(
     onClickLabel: () -> Unit,
     onSearch: () -> Unit,
     onCalendar: () -> Unit,
+    onMenu: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
+            Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+        }
         IconButton(onClick = onPrevious, modifier = Modifier.testTag("month_prev")) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "上个月")
         }

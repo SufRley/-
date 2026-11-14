@@ -57,8 +57,10 @@ fun XxjzApp(
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = routeOverride ?: backStackEntry?.destination?.route
+    // 主 Tab 页以外的都算二级页：二级页隐藏底栏、左上角是返回箭头（PRD D10）
     val isDetail =
-        startDestination == Routes.ONBOARDING && route == Routes.ONBOARDING ||
+        !MainChrome.showBottomBar(route) ||
+            startDestination == Routes.ONBOARDING && route == Routes.ONBOARDING ||
             route == Routes.SEARCH ||
             route == Routes.CALENDAR ||
             route?.startsWith("txn/") == true ||
@@ -101,36 +103,52 @@ fun XxjzApp(
             }
             onShortcutConsumed()
         }
-        MainScreen(
-            currentRoute = route,
-            showBottomBar = !isDetail,
-            onSelectTab = { tab ->
-                onRouteChange?.invoke(tab.route)
-                navController.navigate(tab.route) {
-                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            },
-            onAddClick = {
-                onAdd()
-                openEditor()
+        var drawerOpen by remember { mutableStateOf(false) }
+        XxjzDrawer(
+            open = drawerOpen,
+            onClose = { drawerOpen = false },
+            onOpenRoute = { target ->
+                onRouteChange?.invoke(target)
+                navController.navigate(target) { launchSingleTop = true }
             },
         ) {
-            val start = startDestination
-            if (start == null) {
-                // 还在读引导标记：留白，别先渲染主界面（理由见上面 startDestination 的注释）
-                return@MainScreen
-            }
-            NavHost(
-                navController = navController,
-                startDestination = start,
-                modifier = Modifier.fillMaxSize(),
+            MainScreen(
+                currentRoute = route,
+                showBottomBar = !isDetail,
+                onSelectTab = { tab ->
+                    onRouteChange?.invoke(tab.route)
+                    drawerOpen = false
+                    navController.navigate(tab.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
             ) {
-                appNavGraph(
+                val start = startDestination
+                if (start == null) {
+                    // 还在读引导标记：留白，别先渲染主界面（理由见上面 startDestination 的注释）
+                    return@MainScreen
+                }
+                // 抽屉只能从主 Tab 页打开：二级页不显示 ☰（PRD D10）
+                LaunchedEffect(route) {
+                    if (!MainChrome.showDrawer(route)) drawerOpen = false
+                }
+                NavHost(
                     navController = navController,
-                    onOpenEditor = { id, template -> openEditor(id, template) },
-                )
+                    startDestination = start,
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    appNavGraph(
+                        navController = navController,
+                        onOpenEditor = { id, template -> openEditor(id, template) },
+                        onMenuClick = { drawerOpen = true },
+                        onAdd = {
+                            onAdd()
+                            openEditor()
+                        },
+                    )
+                }
             }
         }
 

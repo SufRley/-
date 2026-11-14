@@ -818,6 +818,20 @@ class DebtRepositoryImpl
     ) : DebtRepository {
         override fun observeAll(): Flow<List<Debt>> = dao.observeAll().map { list -> list.map { it.toModel() } }
 
+        /**
+         * 未结清借贷的尚欠金额（v1.8.0 账户页入口卡）。
+         *
+         * 只统计「未结清、未坏账、尚欠 > 0」且**方向为借入**的（借出是别人欠我，不属于我的负债）；
+         * 借出部分另有「待收」口径，暂不进这张卡，避免把「欠我」和「我欠」糊成一个数。
+         */
+        override fun observeOutstanding(): Flow<List<Pair<String, Long>>> =
+            dao.observeAll().map { list ->
+                // 注意用 toModel(repaidTotal)：observeAll 的实体不带已还金额，直接 toModel() 会算出 remaining=0
+                list.map { it.toModel(dao.repaidTotal(it.id)) }
+                    .filter { !it.settled && !it.writtenOff && it.direction == DebtDirection.BORROW && it.remaining > 0 }
+                    .map { it.id to it.remaining }
+            }
+
         override suspend fun all(): List<Debt> = dao.listAll().map { it.toModel(dao.repaidTotal(it.id)) }
 
         override suspend fun byId(id: String): Debt? {

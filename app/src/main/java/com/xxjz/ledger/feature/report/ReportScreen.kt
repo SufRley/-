@@ -19,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,6 +62,7 @@ import com.xxjz.ledger.domain.model.TxnType
 fun ReportScreen(
     onDrill: (String) -> Unit = {},
     onYearSummary: () -> Unit = {},
+    onMenu: () -> Unit = {},
     viewModel: ReportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -73,6 +75,7 @@ fun ReportScreen(
             onPrevious = viewModel::previous,
             onNext = viewModel::next,
             onYearSummary = onYearSummary,
+            onMenu = onMenu,
         )
         Spacer(Modifier.height(4.dp))
         CapsuleRow(
@@ -131,11 +134,15 @@ private fun WindowHeader(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onYearSummary: () -> Unit,
+    onMenu: () -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
+            Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+        }
         IconButton(onClick = onPrevious, modifier = Modifier.testTag("report_prev")) {
             Icon(Icons.Outlined.ChevronLeft, contentDescription = "上一周期")
         }

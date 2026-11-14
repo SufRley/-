@@ -13,6 +13,7 @@ import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 
 /** 账目仓库。 */
 interface TxnRepository {
@@ -346,6 +347,13 @@ interface DebtRepository {
     suspend fun upsert(debt: Debt)
 
     suspend fun delete(id: String)
+
+    /**
+     * 未结清借贷的「id → 尚欠金额（分）」（v1.8.0 账户页入口卡用）。
+     *
+     * 只返回尚欠 > 0 的项：已还清或坏账的不该继续出现在「还欠多少」里。
+     */
+    fun observeOutstanding(): Flow<List<Pair<String, Long>>> = observeAll().map { emptyList() }
 }
 
 /**

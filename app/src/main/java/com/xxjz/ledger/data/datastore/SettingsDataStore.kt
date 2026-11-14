@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.xxjz.ledger.data.backup.BackupSettings
 import com.xxjz.ledger.domain.model.TxnType
@@ -63,6 +64,11 @@ interface SettingsRepository {
     suspend fun setDailyReminderMinute(minuteOfDay: Int)
 
     suspend fun setOnboardingDone(done: Boolean)
+
+    /** 账户页折叠的分组（v1.8.0）：存枚举名集合，读出来是字符串集合。 */
+    val collapsedAccountGroups: Flow<Set<String>>
+
+    suspend fun setCollapsedAccountGroups(groups: Set<String>)
 
     suspend fun setPin(
         hash: String,
@@ -210,6 +216,13 @@ class SettingsDataStore
             store.edit { it[KEY_DAILY_REMINDER_MINUTE] = minuteOfDay.coerceIn(0, 24 * 60 - 1) }
         }
 
+        /** 账户页折叠分组（v1.8.0）：轻量界面状态，不入备份，恢复备份后按默认展开。 */
+        override val collapsedAccountGroups: Flow<Set<String>> = store.data.map { p -> p[KEY_COLLAPSED_GROUPS] ?: emptySet() }
+
+        override suspend fun setCollapsedAccountGroups(groups: Set<String>) {
+            store.edit { it[KEY_COLLAPSED_GROUPS] = groups }
+        }
+
         /** 首次引导是否已完成（AC-88）。 */
         override suspend fun setOnboardingDone(done: Boolean) {
             store.edit { it[KEY_ONBOARDING_DONE] = done }
@@ -281,6 +294,9 @@ class SettingsDataStore
             val KEY_LAST_BACKUP = longPreferencesKey("last_backup_at")
             val KEY_DAILY_REMINDER = booleanPreferencesKey("daily_reminder")
             val KEY_DAILY_REMINDER_MINUTE = intPreferencesKey("daily_reminder_minute")
+
+            /** 账户页折叠的分组枚举名（v1.8.0）。 */
+            val KEY_COLLAPSED_GROUPS = stringSetPreferencesKey("account_group_collapsed")
             val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
             val KEY_PIN_HASH = stringPreferencesKey("pin_hash")
             val KEY_PIN_SALT = stringPreferencesKey("pin_salt")

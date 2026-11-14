@@ -637,6 +637,24 @@ class FakeDebtRepository(
     }
 }
 
+/**
+ * 借贷仓库的内存实现（v1.8.0 专用）：额外实现 [observeOutstanding]。
+ *
+ * 用独立的类而不是改 [FakeDebtRepository]，是因为那个 Fake 被多处既有用例依赖，
+ * 加接口默认方法会改变它们的行为；这里只补账户页入口卡需要的那条流。
+ */
+class FakeDebtRepositoryOutstanding(
+    private val inner: FakeDebtRepository,
+) : com.xxjz.ledger.domain.repository.DebtRepository by inner {
+    override fun observeOutstanding(): Flow<List<Pair<String, Long>>> =
+        inner.observeAll().map { list ->
+            list.filter {
+                !it.settled && !it.writtenOff && it.direction == com.xxjz.ledger.domain.model.DebtDirection.BORROW &&
+                    it.remaining > 0
+            }.map { it.id to it.remaining }
+        }
+}
+
 /** SAF 文件通道的内存实现：用 Uri 当 key 存字节，测试里可以直接读出写了什么。 */
 class FakeDocumentIo : com.xxjz.ledger.data.io.DocumentIo {
     val files = mutableMapOf<String, ByteArray>()

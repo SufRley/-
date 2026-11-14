@@ -19,6 +19,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -68,6 +72,12 @@ import com.xxjz.ledger.domain.model.AccountType
 fun AccountListScreen(
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
+    onOpenAssetReport: () -> Unit = {},
+    onOpenReimbursement: () -> Unit = {},
+    onOpenDebts: () -> Unit = {},
+    onMenu: () -> Unit = {},
+    /** 作为底部主 Tab 时左上角是 ☰，作为二级页时是返回箭头（PRD D10）。 */
+    isRootTab: Boolean = false,
     viewModel: AccountListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -83,11 +93,20 @@ fun AccountListScreen(
             TopAppBar(
                 title = { Text("账户") },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    if (isRootTab) {
+                        IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
+                            Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+                        }
+                    } else {
+                        IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
+                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                        }
                     }
                 },
                 actions = {
+                    IconButton(onClick = onOpenAssetReport, modifier = Modifier.testTag("account_report")) {
+                        Icon(Icons.Outlined.Insights, contentDescription = "资产报表")
+                    }
                     IconButton(onClick = { creating = true }, modifier = Modifier.testTag("account_add")) {
                         Icon(Icons.Outlined.Add, contentDescription = "新建账户")
                     }
@@ -97,6 +116,12 @@ fun AccountListScreen(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+            EntryCards(
+                reimbursement = state.reimbursement,
+                debts = state.debts,
+                onOpenReimbursement = onOpenReimbursement,
+                onOpenDebts = onOpenDebts,
+            )
             AssetCard(
                 assets = state.summary.assets,
                 liabilities = state.summary.liabilities,
@@ -112,20 +137,17 @@ fun AccountListScreen(
                 )
             }
             state.groups.forEach { group ->
-                Text(
-                    text = group.title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 20.dp, top = 16.dp, bottom = 4.dp),
-                )
-                group.accounts.forEach { account ->
-                    AccountRow(
-                        account = account,
-                        onClick = { onOpen(account.id) },
-                        onEdit = { editing = account },
-                        onToggleHidden = { viewModel.setHidden(account.id, true) },
-                        onDelete = { deleting = account },
-                    )
+                GroupHeader(group = group, onToggle = { viewModel.toggleGroup(group.type) })
+                if (!group.collapsed) {
+                    group.accounts.forEach { account ->
+                        AccountRow(
+                            account = account,
+                            onClick = { onOpen(account.id) },
+                            onEdit = { editing = account },
+                            onToggleHidden = { viewModel.setHidden(account.id, true) },
+                            onDelete = { deleting = account },
+                        )
+                    }
                 }
             }
             if (state.hidden.isNotEmpty()) {
@@ -178,6 +200,96 @@ fun AccountListScreen(
                 deleting = null
             },
             onDismiss = { deleting = null },
+        )
+    }
+}
+
+/**
+ * 待报销 / 借贷台账入口卡（v1.8.0 / PRD F3 / D5 / D6）。
+ *
+ * 两张并排，数值直接显示在卡里，让用户不点进去也知道「还有多少钱没报销、还欠多少」。
+ */
+@Composable
+private fun EntryCards(
+    reimbursement: EntryCardState,
+    debts: EntryCardState,
+    onOpenReimbursement: () -> Unit,
+    onOpenDebts: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        EntryCard(
+            title = "待报销",
+            value = reimbursement.amountCents,
+            subtitle = if (reimbursement.count == 0) "暂无" else "${reimbursement.count} 笔待处理",
+            onClick = onOpenReimbursement,
+            modifier = Modifier.weight(1f).testTag("entry_reimbursement"),
+        )
+        EntryCard(
+            title = "借贷台账",
+            value = debts.amountCents,
+            subtitle = if (debts.count == 0) "暂无欠款" else "${debts.count} 笔未结清",
+            onClick = onOpenDebts,
+            modifier = Modifier.weight(1f).testTag("entry_debts"),
+        )
+    }
+}
+
+@Composable
+private fun EntryCard(
+    title: String,
+    value: Long,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(onClick = onClick, modifier = modifier) {
+        Column(Modifier.padding(12.dp)) {
+            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                text = "¥${MoneyFormatter.centsToYuan(value)}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** 分组头：标题 + 合计 + 折叠箭头，点击整行折叠/展开（v1.8.0 / PRD F3）。 */
+@Composable
+private fun GroupHeader(
+    group: AccountGroup,
+    onToggle: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp)
+                .testTag("group_${group.type.name}"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = group.title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "¥${MoneyFormatter.centsToYuan(group.total)}",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Icon(
+            imageVector = if (group.collapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+            contentDescription = if (group.collapsed) "展开" else "折叠",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp).size(18.dp),
         )
     }
 }
