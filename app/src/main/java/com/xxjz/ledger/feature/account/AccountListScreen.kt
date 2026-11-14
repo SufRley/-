@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -428,6 +430,7 @@ private fun typeLabel(type: AccountType): String =
     }
 
 /** P15 账户编辑：按类型驱动表单，信用类才显示额度与账单/还款日（AC-17）。 */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AccountEditDialog(
     account: Account?,
@@ -466,7 +469,9 @@ private fun AccountEditDialog(
                     modifier = Modifier.fillMaxWidth().testTag("account_name"),
                 )
                 Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // 5 个类型放不下单行：360dp 屏第 5 个「投资」会被裁到屏幕外，
+                // 用户看到的就是「没有投资账户」。用 FlowRow 自动换行（v1.8.1）
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AccountType.entries.forEach { item ->
                         FilterChip(
                             selected = type == item,

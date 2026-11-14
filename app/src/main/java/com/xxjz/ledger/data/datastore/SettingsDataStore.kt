@@ -51,6 +51,13 @@ interface SettingsRepository {
 
     suspend fun setAppLockEnabled(enabled: Boolean)
 
+    /**
+     * 指纹 / 面容解锁开关（v1.8.1）。
+     *
+     * 只在 [AppSettings.appLockEnabled] 为 true 时有意义：关掉应用锁会顺带关掉它。
+     */
+    suspend fun setBiometricEnabled(enabled: Boolean)
+
     suspend fun setLastTxnType(type: TxnType)
 
     suspend fun setBackupReminder(enabled: Boolean)
@@ -126,6 +133,7 @@ class SettingsDataStore
                     dailyReminderEnabled = p[KEY_DAILY_REMINDER] ?: false,
                     dailyReminderMinute = p[KEY_DAILY_REMINDER_MINUTE] ?: 21 * 60,
                     onboardingDone = p[KEY_ONBOARDING_DONE] ?: false,
+                    biometricEnabled = p[KEY_BIOMETRIC] ?: false,
                     pinHash = p[KEY_PIN_HASH],
                     pinSalt = p[KEY_PIN_SALT],
                 )
@@ -167,7 +175,16 @@ class SettingsDataStore
         }
 
         override suspend fun setAppLockEnabled(enabled: Boolean) {
-            store.edit { it[KEY_LOCK] = enabled }
+            store.edit {
+                it[KEY_LOCK] = enabled
+                // 关掉应用锁时指纹开关必须一起关：锁都不上了，留个「指纹解锁」没有意义，
+                // 下次再打开应用锁时也不该莫名其妙继承上次的开关状态。
+                if (!enabled) it[KEY_BIOMETRIC] = false
+            }
+        }
+
+        override suspend fun setBiometricEnabled(enabled: Boolean) {
+            store.edit { it[KEY_BIOMETRIC] = enabled }
         }
 
         override suspend fun setLastTxnType(type: TxnType) {
@@ -287,6 +304,7 @@ class SettingsDataStore
             val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
             val KEY_RECYCLE_DAYS = intPreferencesKey("recycle_bin_days")
             val KEY_LOCK = booleanPreferencesKey("app_lock")
+            val KEY_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
             val KEY_BACKUP_REMINDER = booleanPreferencesKey("backup_reminder")
             val KEY_LAST_TYPE = stringPreferencesKey("last_txn_type")
             val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
@@ -315,6 +333,8 @@ data class AppSettings(
     val themeMode: String = "SYSTEM",
     val recycleBinDays: Int = 30,
     val appLockEnabled: Boolean = false,
+    /** 指纹 / 面容解锁（v1.8.1）；仅 [appLockEnabled] 为 true 时可用。 */
+    val biometricEnabled: Boolean = false,
     val backupReminderEnabled: Boolean = true,
     val lastTxnType: TxnType = TxnType.EXPENSE,
     /** 结余目标（分），0 表示未设置。 */

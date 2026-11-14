@@ -118,4 +118,47 @@ class CalcEngineTest {
         assertTrue(s.expressionText.contains("12"))
         assertTrue(s.expressionText.contains("+"))
     }
+
+    @Test
+    fun `以运算符结尾时求值报错而不是当成加0`() {
+        // `100 +` 与 `100 + 0` 的 buffer 都是 "0"，只看 buffer 会把少输的数静默当 0
+        var s = digits(CalcEngine.initial(), "100")
+        s = CalcEngine.op(s, CalcOp.ADD)
+        val evaluated = CalcEngine.evaluate(s)
+        assertEquals("表达式不完整，请补全金额", evaluated.error)
+        assertFalse(evaluated.evaluated)
+        assertNull(CalcEngine.centsOf(evaluated))
+    }
+
+    @Test
+    fun `运算符后补上数字就能正常求值`() {
+        var s = digits(CalcEngine.initial(), "100")
+        s = CalcEngine.op(s, CalcOp.ADD)
+        s = digits(s, "20")
+        val evaluated = CalcEngine.evaluate(s)
+        assertNull(evaluated.error)
+        assertEquals("120", evaluated.display)
+    }
+
+    @Test
+    fun `刚按下运算符时退格撤销运算符`() {
+        var s = digits(CalcEngine.initial(), "100")
+        s = CalcEngine.op(s, CalcOp.ADD)
+        assertTrue(s.lastWasOp)
+        val undone = CalcEngine.backspace(s)
+        assertFalse(undone.lastWasOp)
+        assertEquals("100", undone.display)
+        assertTrue(undone.values.isEmpty())
+    }
+
+    @Test
+    fun `运算符后输入0算合法表达式`() {
+        // 与上一条的区别：digit('0') 之后 lastWasOp 归 false，属于「写完了」
+        var s = digits(CalcEngine.initial(), "100")
+        s = CalcEngine.op(s, CalcOp.ADD)
+        s = CalcEngine.digit(s, '0')
+        val evaluated = CalcEngine.evaluate(s)
+        assertNull(evaluated.error)
+        assertEquals("100", evaluated.display)
+    }
 }

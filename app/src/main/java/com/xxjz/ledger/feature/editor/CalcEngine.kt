@@ -28,6 +28,14 @@ data class CalcState(
     val error: String? = null,
     /** 已经按过 `=`，此时再按 `=` 表示保存（AC-03）。 */
     val evaluated: Boolean = false,
+    /**
+     * 上一个按键是运算符。
+     *
+     * 存在的唯一目的是让 [CalcEngine.evaluate] 能区分「`100 +`（没写完）」和「`100 + 0`（写完了）」——
+     * 两种状态的 buffer 都是 `"0"`，只看 buffer 分不出来。v1.8.1 之前不做这个区分，
+     * 于是 `100 +` 点保存会静默存成 100，用户根本不知道少按了一个数。
+     */
+    val lastWasOp: Boolean = false,
 ) {
     /** 主展示区文本：错误优先，否则是当前输入。 */
     val display: String get() = error ?: buffer
@@ -71,7 +79,7 @@ object CalcEngine {
                 !buf.contains('.') && buf.length >= MAX_INT_DIGITS -> return s
                 else -> buf + d
             }
-        return s.copy(buffer = next, evaluated = false)
+        return s.copy(buffer = next, evaluated = false, lastWasOp = false)
     }
 
     /** 输入小数点：去重，自动补 0。 */
@@ -79,15 +87,27 @@ object CalcEngine {
         var s = state
         if (s.error != null || s.evaluated) s = CalcState()
         if (s.buffer.contains('.')) return s
-        return s.copy(buffer = s.buffer + ".", evaluated = false)
+        return s.copy(buffer = s.buffer + ".", evaluated = false, lastWasOp = false)
     }
 
-    /** 退格：删到空归零；错误/已求值状态直接清空。 */
+    /**
+     * 退格：删到空归零；错误/已求值状态直接清空。
+     *
+     * 运算符刚按下时退格 = 撤销那个运算符（`100 +` → `100`），否则用户按了 `+` 想反悔
+     * 只能一路退到 0 重输。
+     */
     fun backspace(state: CalcState): CalcState {
         if (state.error != null || state.evaluated) return CalcState()
-        if (state.buffer.isEmpty() || state.buffer == "0") return state.copy(buffer = "0")
+        if (state.lastWasOp && state.ops.isNotEmpty()) {
+            return CalcState(
+                values = state.values.dropLast(1),
+                ops = state.ops.dropLast(1),
+                buffer = plain(state.values.last()),
+            )
+        }
+        if (state.buffer.isEmpty() || state.buffer == "0") return state.copy(buffer = "0", lastWasOp = false)
         val next = state.buffer.dropLast(1)
-        return state.copy(buffer = if (next.isEmpty() || next == "-") "0" else next)
+        return state.copy(buffer = if (next.isEmpty() || next == "-") "0" else next, lastWasOp = false)
     }
 
     fun clear(state: CalcState = CalcState()): CalcState = CalcState()
@@ -100,7 +120,7 @@ object CalcEngine {
         if (state.error != null) return CalcState()
         val operand = state.buffer.toBigDecimalOrNull() ?: BigDecimal.ZERO
         if (state.evaluated) {
-            return CalcState(values = listOf(operand), ops = listOf(op), buffer = "0")
+            return CalcState(values = listOf(operand), ops = listOf(op), buffer = "0", lastWasOp = true)
         }
         val values = state.values.toMutableList()
         val ops = state.ops.toMutableList()
@@ -112,13 +132,15 @@ object CalcEngine {
         }
         values.add(acc)
         ops.add(op)
-        return CalcState(values = values, ops = ops, buffer = "0")
+        return CalcState(values = values, ops = ops, buffer = "0", lastWasOp = true)
     }
 
     /** 求值。栈空时只把当前输入固化为结果。 */
     fun evaluate(state: CalcState): CalcState {
         if (state.error != null) return CalcState()
         if (state.evaluated) return state
+        // 以运算符结尾说明表达式没写完：此时按「100 + 0」算会静默吞掉用户少按的那个数
+        if (state.lastWasOp) return state.copy(error = "表达式不完整，请补全金额")
         val values = state.values.toMutableList()
         val ops = state.ops.toMutableList()
         var acc = state.buffer.toBigDecimalOrNull() ?: BigDecimal.ZERO

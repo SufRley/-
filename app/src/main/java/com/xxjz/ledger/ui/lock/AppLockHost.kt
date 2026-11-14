@@ -39,7 +39,8 @@ interface LockSettingsEntryPoint {
  *
  * - 生命周期事件驱动上锁/解锁计时：ON_START 回前台、ON_STOP 进后台；
  * - PIN 校验放在 IO 线程（PBKDF2 两万轮在主线程会掉帧）；
- * - 生物识别弹窗只由用户点按钮触发，不在每次回到前台时自动弹——自动弹会打断「切去截图再回来」这类操作。
+ * - 生物识别弹窗：**只有用户在设置里打开了「指纹 / 面容解锁」才会在锁定时自动拉起**（v1.8.1 #7）。
+ *   没打开时仍由用户点按钮触发——自动弹会打断「切去截图再回来」这类操作，所以默认保持克制。
  */
 @Composable
 fun AppLockHost(content: @Composable () -> Unit) {
@@ -60,6 +61,30 @@ fun AppLockHost(content: @Composable () -> Unit) {
             guard.configure(enabled = it.appLockEnabled, hasPin = it.hasPin)
             state = guard.state
         }
+    }
+
+    // 每个锁定周期只自动弹一次：用户取消后又手滑切走再回来，不该被反复糊一脸弹窗。
+    var autoPrompted by remember { mutableStateOf(false) }
+    LaunchedEffect(state.locked) {
+        if (!state.locked) autoPrompted = false
+    }
+    LaunchedEffect(state.locked, prefs?.biometricEnabled, prefs?.appLockEnabled) {
+        val p = prefs ?: return@LaunchedEffect
+        val gate = biometric ?: return@LaunchedEffect
+        if (!state.locked || !p.biometricEnabled || autoPrompted) return@LaunchedEffect
+        if (gate.availability() != BiometricAvailability.AVAILABLE) return@LaunchedEffect
+        autoPrompted = true
+        gate.authenticate(
+            onSuccess = {
+                guard.onBiometricSuccess()
+                state = guard.state
+            },
+            onFailed = {
+                // 取消/失败都落到 PIN 页，不消耗输错次数（指纹失败不该算密码输错）
+                guard.onBiometricCancelled()
+                state = guard.state
+            },
+        )
     }
 
     val owner = LocalLifecycleOwner.current

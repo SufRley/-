@@ -58,7 +58,11 @@ class FakeSettingsDataStore(
 
     override suspend fun setRecycleBinDays(days: Int) = edit { it.copy(recycleBinDays = days) }
 
-    override suspend fun setAppLockEnabled(enabled: Boolean) = edit { it.copy(appLockEnabled = enabled) }
+    override suspend fun setAppLockEnabled(enabled: Boolean) =
+        // 与真实现保持一致：关锁时联动关掉指纹开关
+        edit { it.copy(appLockEnabled = enabled, biometricEnabled = if (enabled) it.biometricEnabled else false) }
+
+    override suspend fun setBiometricEnabled(enabled: Boolean) = edit { it.copy(biometricEnabled = enabled) }
 
     override suspend fun setLastTxnType(type: TxnType) = edit { it.copy(lastTxnType = type) }
 

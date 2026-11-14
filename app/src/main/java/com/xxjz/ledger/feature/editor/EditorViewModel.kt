@@ -114,9 +114,10 @@ class EditorViewModel
             viewModelScope.launch {
                 accountRepository.observeWithBalances().collect { list ->
                     _state.update { s ->
-                        val accountId = s.accountId ?: list.firstOrNull()?.id
-                        val toAccountId = s.toAccountId ?: list.getOrNull(1)?.id ?: accountId
-                        s.copy(accounts = list, accountId = accountId, toAccountId = toAccountId)
+                        // 不预填第一个账户：以前 chip 直接显示「现金」，用户根本看不出那是个
+                        // 账户选择器，于是「支出不能选账户」（v1.8.1 #4）。改成未选时显示「选账户」。
+                        // 只有一个账户时无从选择，自动带上，免得每次多点一次。
+                        s.copy(accounts = list, accountId = s.accountId ?: list.singleOrNull()?.id)
                     }
                 }
             }
@@ -188,6 +189,20 @@ class EditorViewModel
             } else {
                 _state.update { it.copy(calc = CalcEngine.evaluate(it.calc), dirty = true) }
             }
+        }
+
+        /**
+         * 「保存」：先兜底求值，再提交（v1.8.1 #5）。
+         *
+         * 之前底部只有一个按钮，未求值时显示「=」，用户必须先按一次才能存——等于强制两步。
+         * 现在保存常驻，表达式没算就先算。表达式不完整（以运算符结尾）由
+         * [CalcEngine.evaluate] 报错，[submit] 拿到错误后不会写库。
+         */
+        fun submitOrEvaluate() {
+            if (!_state.value.calc.evaluated) {
+                _state.update { it.copy(calc = CalcEngine.evaluate(it.calc)) }
+            }
+            submit()
         }
 
         // ---------- 字段 ----------

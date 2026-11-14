@@ -188,6 +188,16 @@ class SettingsViewModel
             }
         }
 
+        /** 指纹 / 面容解锁开关（v1.8.1 #7）。 */
+        fun setBiometricEnabled(enabled: Boolean) {
+            viewModelScope.launch { settings.setBiometricEnabled(enabled) }
+        }
+
+        /** 设备没录入指纹时点开关的提示，由页面在禁用态下调用。 */
+        fun setBiometricUnavailable() {
+            message.value = "请先在系统设置中录入指纹或面容"
+        }
+
         /** 修改密码：先校验旧密码。 */
         fun changePin(
             oldPin: String,

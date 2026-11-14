@@ -33,6 +33,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -42,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.PinHasher
 import com.xxjz.ledger.data.datastore.DefaultTimeMode
 import com.xxjz.ledger.data.datastore.KeypadType
+import com.xxjz.ledger.ui.lock.BiometricAvailability
 
 /** 设置页（AC-95）：记账默认值、外观、提醒、回收站、应用锁。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +54,9 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pinDialog by remember { mutableStateOf(PinDialogMode.HIDDEN) }
+    // 设备是否已录入指纹/面容：没录入时开关置灰，避免「打开了却永远弹不出来」
+    val context = LocalContext.current
+    val biometricReady = remember(context) { BiometricAvailability.hasEnrolledBiometric(context) }
 
     Scaffold(
         topBar = {
@@ -171,6 +176,17 @@ fun SettingsScreen(
             }
             if (state.prefs.appLockEnabled) {
                 item {
+                    // 指纹开关（v1.8.1 #7）：以前设置里只有「改密码」，锁屏那个「改用指纹」
+                    // 按钮等于藏起来了。开启后锁定时会自动拉起系统指纹弹窗。
+                    SwitchSetting(
+                        title = "指纹 / 面容解锁",
+                        checked = state.prefs.biometricEnabled,
+                        tag = "switch_biometric",
+                        subtitle = if (biometricReady) "锁定后自动弹出指纹，失败可改用密码" else "未检测到已录入的指纹或面容",
+                        enabled = biometricReady,
+                    ) { on -> viewModel.setBiometricEnabled(on) }
+                }
+                item {
                     RowSetting("修改密码", "") { pinDialog = PinDialogMode.CHANGE }
                 }
             }
@@ -274,15 +290,34 @@ private fun SwitchSetting(
     title: String,
     checked: Boolean,
     tag: String,
+    subtitle: String? = null,
+    enabled: Boolean = true,
     onChange: (Boolean) -> Unit,
 ) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag(tag))
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyLarge,
+                color =
+                    if (enabled) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled, modifier = Modifier.testTag(tag))
     }
 }
 

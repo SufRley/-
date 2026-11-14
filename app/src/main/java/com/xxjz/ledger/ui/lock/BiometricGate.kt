@@ -30,6 +30,17 @@ enum class BiometricAvailability {
                 else -> UNAVAILABLE
             }
         }
+
+        /**
+         * 只问「有没有录指纹/面容」，不含锁屏密码这条兜底。
+         *
+         * 与 [of] 的区别很实际：[of] 把 DEVICE_CREDENTIAL 也算可用，但解锁弹窗只允许
+         * BIOMETRIC_WEAK（要留「用密码」按钮走我们自己的 PIN）。设备只设了锁屏密码却没录指纹时，
+         * 若用 [of] 判断就会让设置里的开关看起来可用、点开却永远弹不出来。
+         */
+        fun hasEnrolledBiometric(context: Context): Boolean =
+            BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+                BiometricManager.BIOMETRIC_SUCCESS
     }
 }
 

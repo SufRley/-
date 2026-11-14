@@ -20,4 +20,14 @@ object MainChrome {
      * 注意与底栏不同：报表页、账户页属于主 Tab，但没有 ＋，所以单独判一次而不是复用 [showBottomBar]。
      */
     fun showFab(route: String?): Boolean = route == Routes.LEDGER
+
+    /**
+     * 是否是二级页（要隐藏底栏、左上角换返回箭头）。
+     *
+     * 定义上就等于「不是主 Tab」，只此一条。v1.8.1 曾经的写法在这里另挂了一长串
+     * `route == Routes.XXX ||` 的白名单，结果把主 Tab `ACCOUNTS` 也写了进去，
+     * 导致点「账户」后整条底栏消失。既然 [MAIN_TAB_ROUTES] 已经是唯一事实来源，
+     * 这里就不要再重复列举任何路由——多列一条就可能多错一条。
+     */
+    fun isDetail(route: String?): Boolean = !showBottomBar(route)
 }

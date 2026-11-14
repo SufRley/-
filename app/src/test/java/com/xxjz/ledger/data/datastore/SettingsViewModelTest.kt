@@ -143,6 +143,46 @@ class SettingsViewModelTest {
         }
 
     @Test
+    fun biometricTogglePersists() =
+        runTest {
+            viewModel.enableAppLock("1234")
+            advanceUntilIdle()
+            viewModel.consumeMessage()
+
+            viewModel.setBiometricEnabled(true)
+            advanceUntilIdle()
+            assertTrue(settings.value.biometricEnabled)
+            assertTrue(viewModel.state.value.prefs.biometricEnabled)
+
+            viewModel.setBiometricEnabled(false)
+            advanceUntilIdle()
+            assertFalse(settings.value.biometricEnabled)
+        }
+
+    @Test
+    fun disablingLockAlsoTurnsOffBiometric() =
+        runTest {
+            viewModel.enableAppLock("1234")
+            advanceUntilIdle()
+            viewModel.setBiometricEnabled(true)
+            advanceUntilIdle()
+            assertTrue(settings.value.biometricEnabled)
+
+            viewModel.disableAppLock()
+            advanceUntilIdle()
+            // 锁都关了还留着指纹开关，下次开锁会莫名其妙继承上次状态
+            assertFalse(settings.value.biometricEnabled)
+        }
+
+    @Test
+    fun biometricUnavailableShowsHint() =
+        runTest {
+            viewModel.setBiometricUnavailable()
+            advanceUntilIdle()
+            assertEquals("请先在系统设置中录入指纹或面容", viewModel.state.value.message)
+        }
+
+    @Test
     fun changePinChecksOld() =
         runTest {
             viewModel.enableAppLock("1234")

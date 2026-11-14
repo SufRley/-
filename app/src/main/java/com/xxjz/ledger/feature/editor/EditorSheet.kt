@@ -4,14 +4,25 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.CreditCard
+import androidx.compose.material.icons.outlined.Handshake
+import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.core.designsystem.component.ConfirmDialog
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.TxnType
 
 /**
@@ -42,7 +54,7 @@ import com.xxjz.ledger.domain.model.TxnType
  *
  * 数据全部来自 [EditorViewModel] 的单一 UiState，面板本身不持有业务状态。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun EditorSheet(
     viewModel: EditorViewModel,
@@ -53,7 +65,6 @@ fun EditorSheet(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showDiscard by remember { mutableStateOf(false) }
     var showCategory by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showToAccount by remember { mutableStateOf(false) }
@@ -72,9 +83,9 @@ fun EditorSheet(
     }
 
     ModalBottomSheet(
-        onDismissRequest = {
-            if (state.dirty) showDiscard = true else onDismiss()
-        },
+        // 滑下即关闭，不再弹「放弃这笔记账？」（v1.8.1 #6）：记一笔账是很轻的动作，
+        // 每次退出都拦一道确认比误触丢内容更烦人。保存按钮常驻后误触概率也降低了。
+        onDismissRequest = onDismiss,
         sheetState = sheetState,
         modifier = Modifier.testTag("editor_sheet"),
     ) {
@@ -84,7 +95,8 @@ fun EditorSheet(
                 onSelect = viewModel::setType,
             )
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // 转出/转入/日期在 360dp 屏上放不进一行，改成自动换行（v1.8.1 #4）
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (state.type == TxnType.EXPENSE || state.type == TxnType.INCOME) {
                     PickerChip(
                         label = state.categoryName ?: "选分类",
@@ -99,12 +111,15 @@ fun EditorSheet(
                             else -> state.accountName ?: "选账户"
                         },
                     tag = "chip_account",
+                    // 带上账户类型图标，让用户一眼看出这是账户选择器而不是一个静态标签
+                    icon = accountIconOf(state.accounts.firstOrNull { it.id == state.accountId }?.type),
                     onClick = { showAccount = true },
                 )
                 if (state.type == TxnType.TRANSFER) {
                     PickerChip(
                         label = "到 ${state.toAccountName ?: "账户"}",
                         tag = "chip_to_account",
+                        icon = accountIconOf(state.accounts.firstOrNull { it.id == state.toAccountId }?.type),
                         onClick = { showToAccount = true },
                     )
                 }
@@ -172,36 +187,18 @@ fun EditorSheet(
             )
             Spacer(Modifier.height(10.dp))
             Button(
-                onClick = viewModel::equals,
+                // 保存不再需要先按「=」：未求值时自动求值再存（v1.8.1 #5）
+                onClick = viewModel::submitOrEvaluate,
                 enabled = !state.saving,
-                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("key_equals"),
+                modifier = Modifier.fillMaxWidth().height(52.dp).testTag("btn_save"),
             ) {
                 Text(
-                    if (state.calc.evaluated) {
-                        if (state.editingId != null) "保存修改" else "保存"
-                    } else {
-                        "="
-                    },
+                    if (state.editingId != null) "保存修改" else "保存",
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
             Spacer(Modifier.height(20.dp))
         }
-    }
-
-    if (showDiscard) {
-        ConfirmDialog(
-            title = "放弃这笔记账？",
-            message = "已填写的内容不会保存。",
-            confirmText = "放弃",
-            dismissText = "继续记账",
-            destructive = true,
-            onConfirm = {
-                showDiscard = false
-                onDismiss()
-            },
-            onDismiss = { showDiscard = false },
-        )
     }
 
     if (showCategory) {
@@ -324,6 +321,7 @@ private fun PickerChip(
     label: String,
     tag: String,
     onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
 ) {
     Surface(
         onClick = onClick,
@@ -331,14 +329,38 @@ private fun PickerChip(
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.testTag(tag),
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        )
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
+
+/** 账户类型对应的图标；未选账户时给一个中性图标，别让 chip 看起来是纯文字标签。 */
+private fun accountIconOf(type: AccountType?): ImageVector =
+    when (type) {
+        AccountType.CASH -> Icons.Outlined.Payments
+        AccountType.SAVINGS -> Icons.Outlined.AccountBalance
+        AccountType.CREDIT -> Icons.Outlined.CreditCard
+        AccountType.DEBT -> Icons.Outlined.Handshake
+        AccountType.INVEST -> Icons.AutoMirrored.Outlined.TrendingUp
+        null -> Icons.Outlined.AccountBalanceWallet
+    }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -347,12 +369,14 @@ private fun Keypad(
     onBackspace: () -> Unit,
     onBackspaceLong: () -> Unit,
 ) {
+    // 数字占左三列，运算符独立占最右一列（v1.8.1 #5）：以前运算符散落在数字行里，
+    // 底部那个大按钮还兼着「=」和「保存」两个身份，用户以为必须先算一次。
     val rows =
         listOf(
-            listOf("7", "8", "9", "⌫"),
-            listOf("4", "5", "6", "+"),
-            listOf("1", "2", "3", "-"),
-            listOf(".", "0", "×", "÷"),
+            listOf("7", "8", "9", "+"),
+            listOf("4", "5", "6", "-"),
+            listOf("1", "2", "3", "×"),
+            listOf(".", "0", "⌫", "÷"),
         )
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         rows.forEach { row ->

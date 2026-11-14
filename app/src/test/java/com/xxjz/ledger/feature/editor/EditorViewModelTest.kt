@@ -24,6 +24,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -176,6 +177,81 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             assertEquals("不能除以 0", vm.state.value.error)
+            assertTrue(txnRepo.items.isEmpty())
+        }
+
+    // ---------- v1.8.1：账户预选与「保存免按 =」 ----------
+
+    @Test
+    fun `只有一个账户时自动选中，省去无意义的一次点击`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertEquals("acc-1", vm.state.value.accountId)
+        }
+
+    @Test
+    fun `多个账户时不预选，chip 显示选账户而不是第一个账户名`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] =
+                Account(id = "acc-2", name = "招行卡", type = AccountType.SAVINGS)
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.accountId, "有多个账户时应等用户自己选")
+            assertNull(vm.state.value.accountName)
+        }
+
+    @Test
+    fun `未选账户时保存提示请选择账户`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] =
+                Account(id = "acc-2", name = "招行卡", type = AccountType.SAVINGS)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('3')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals("请选择账户", vm.state.value.error)
+            assertTrue(txnRepo.items.isEmpty())
+        }
+
+    @Test
+    fun `未按等号直接点保存也能存上`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('1')
+            vm.digit('2')
+            vm.digit('8')
+            assertFalse(vm.state.value.calc.evaluated, "前置条件：还没求值")
+
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertTrue(vm.state.value.calc.evaluated, "保存时应先自动求值")
+            assertEquals(1, txnRepo.items.size)
+            assertEquals(12_800L, txnRepo.items.values.first().amount)
+        }
+
+    @Test
+    fun `表达式不完整时点保存不写库`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('1')
+            vm.digit('0')
+            vm.digit('0')
+            vm.operator(CalcOp.ADD)
+
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals("表达式不完整，请补全金额", vm.state.value.error)
             assertTrue(txnRepo.items.isEmpty())
         }
 }

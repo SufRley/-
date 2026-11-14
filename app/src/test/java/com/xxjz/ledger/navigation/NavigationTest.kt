@@ -91,4 +91,30 @@ class NavigationTest {
         assertEquals("asset_report", Routes.ASSET_REPORT)
         assertFalse(MainChrome.showBottomBar(Routes.ASSET_REPORT))
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["ledger", "report", "accounts"])
+    @DisplayName("三个主 Tab 都不是二级页，底栏不会消失（v1.8.1 回归）")
+    fun mainTabsAreNotDetail(route: String) {
+        assertFalse(MainChrome.isDetail(route), "$route 是主 Tab，若判成二级页底栏会整条消失")
+    }
+
+    @Test
+    @DisplayName("isDetail 与 showBottomBar 严格互斥，杜绝两套判定各说各话")
+    fun isDetailIsComplementOfBottomBar() {
+        val samples =
+            listOf(
+                Routes.LEDGER, Routes.REPORT, Routes.ACCOUNTS,
+                Routes.SEARCH, Routes.CALENDAR, Routes.TEMPLATES, Routes.SETTINGS,
+                Routes.BACKUP, Routes.TRASH, Routes.ASSET_REPORT, Routes.DEBTS,
+                Routes.REIMBURSEMENT, Routes.ONBOARDING, null, "",
+            )
+        samples.forEach { r ->
+            assertEquals(
+                !MainChrome.showBottomBar(r),
+                MainChrome.isDetail(r),
+                "路由 $r 的 isDetail 与 showBottomBar 不一致",
+            )
+        }
+    }
 }

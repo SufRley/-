@@ -58,28 +58,8 @@ fun XxjzApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = routeOverride ?: backStackEntry?.destination?.route
     // 主 Tab 页以外的都算二级页：二级页隐藏底栏、左上角是返回箭头（PRD D10）
-    val isDetail =
-        !MainChrome.showBottomBar(route) ||
-            startDestination == Routes.ONBOARDING && route == Routes.ONBOARDING ||
-            route == Routes.SEARCH ||
-            route == Routes.CALENDAR ||
-            route?.startsWith("txn/") == true ||
-            route?.startsWith("account/") == true ||
-            route == Routes.ACCOUNTS ||
-            route == Routes.TEMPLATES ||
-            route == Routes.YEAR_SUMMARY ||
-            route == Routes.BUDGET_EDIT ||
-            route == Routes.RECURRING ||
-            route == Routes.RECURRING_EDIT ||
-            route == Routes.REIMBURSEMENT ||
-            route == Routes.DEBTS ||
-            route == Routes.BACKUP ||
-            route == Routes.CSV_EXPORT ||
-            route == Routes.TRASH ||
-            route == Routes.MANAGE ||
-            route == Routes.SETTINGS ||
-            route?.startsWith("debt/") == true ||
-            route?.startsWith("drill/") == true
+    // 判定收在 MainChrome 里，避免此处各写一套后再把主 Tab 误判成二级页
+    val isDetail = MainChrome.isDetail(route)
 
     fun openEditor(
         id: String? = null,
