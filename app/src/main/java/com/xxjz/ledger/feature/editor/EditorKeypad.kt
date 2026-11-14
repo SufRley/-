@@ -2,6 +2,7 @@ package com.xxjz.ledger.feature.editor
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -205,7 +206,7 @@ private fun RowScope.DigitKey(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .combinedClickable(enabled = enabled, onClick = onClick),
+                    .clickable(enabled = enabled, onClick = onClick),
         ) {
             Text(
                 text = label,
@@ -256,7 +257,7 @@ private fun SaveAndNextKey(
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxSize().combinedClickable(enabled = enabled, onClick = onClick),
+            modifier = Modifier.fillMaxSize().clickable(enabled = enabled, onClick = onClick),
         ) {
             Text(
                 text = "再记",
@@ -290,7 +291,7 @@ private fun SaveKey(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .combinedClickable(onClick = { if (blocker == null) onClick() else onBlocked(blocker) }),
+                    .clickable(onClick = { if (blocker == null) onClick() else onBlocked(blocker) }),
         ) {
             Text(
                 text = "保存",
@@ -313,7 +314,7 @@ private fun RowScope.CalcToggleKey(
         color = MaterialTheme.colorScheme.surface,
         modifier = Modifier.weight(1f).height(KeyHeight).testTag("key_calc_toggle"),
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().combinedClickable(onClick = onClick)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize().clickable(onClick = onClick)) {
             Icon(
                 imageVector = if (calculatorMode) Icons.Outlined.Dialpad else Icons.Outlined.Calculate,
                 contentDescription = if (calculatorMode) "切换数字键盘" else "切换计算器",
