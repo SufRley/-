@@ -23,19 +23,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,6 +54,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
+import com.xxjz.ledger.core.designsystem.component.CompactHeader
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.core.ui.chart.ChartBox
 import com.xxjz.ledger.core.ui.chart.ChartPoint
@@ -85,6 +85,7 @@ import kotlin.math.abs
 fun AssetReportScreen(
     onBack: () -> Unit,
     onOpenTxn: (String) -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     viewModel: AssetReportViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -94,30 +95,32 @@ fun AssetReportScreen(
     var center by remember { mutableStateOf(PieCenter.AMOUNT) }
     var centerTouched by remember { mutableStateOf(false) }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize().testTag("screen_asset_report"),
-        topBar = {
-            TopAppBar(
-                title = { Text("资产报表") },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("asset_report_back")) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    // v1.9.3 第 4 条：去掉 TopAppBar（64dp + 状态栏 inset），换紧凑头，
+    // 与明细 / 账户 / 待报销页同一起点，不再出现「上面空一块」。
+    Column(Modifier.fillMaxSize().testTag("screen_asset_report")) {
+        CompactHeader(
+            title = "资产报表",
+            leading = {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("asset_report_back")) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                }
+            },
+            actions = {
+                IconButton(onClick = onOpenSettings, modifier = Modifier.testTag("asset_report_settings")) {
+                    Icon(Icons.Outlined.Settings, contentDescription = "设置")
+                }
+            },
+        )
         if (state.loading) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
-            return@Scaffold
+            return@Column
         }
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),

@@ -126,6 +126,7 @@ internal fun NavGraphBuilder.appNavGraph(
         AssetReportScreen(
             onBack = { navController.popBackStack() },
             onOpenTxn = { id -> navController.navigate(Routes.txnDetail(id)) },
+            onOpenSettings = { navController.navigate(Routes.SETTINGS) },
         )
     }
     composable(
