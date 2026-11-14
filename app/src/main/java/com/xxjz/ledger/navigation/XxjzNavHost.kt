@@ -5,12 +5,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -20,14 +18,12 @@ import com.xxjz.ledger.core.common.ShortcutAction
 import com.xxjz.ledger.core.common.StartDestination
 import com.xxjz.ledger.core.common.readOnboardingDone
 import com.xxjz.ledger.data.datastore.SettingsRepository
-import com.xxjz.ledger.feature.editor.EditorSheet
-import com.xxjz.ledger.feature.editor.EditorViewModel
 
 /**
- * 应用根组件：主框架 + NavHost + 全局记账面板。
+ * 应用根组件：主框架 + NavHost。
  *
  * - Tab 切换走 NavController，保证返回栈与状态恢复正确；
- * - 记账面板挂在根节点，任意页面点「＋」都能拉起，每次打开换 key 拿到干净的新 ViewModel；
+ * - 记账页 v1.9.1 起是全屏路由（用户明确要求「不要抽屉」），不再挂在根节点；
  * - 详情页隐藏底部导航，给内容留出整屏。
  */
 @Composable
@@ -41,11 +37,6 @@ fun XxjzApp(
     onShortcutConsumed: () -> Unit = {},
     settings: SettingsRepository,
 ) {
-    var editorOpen by remember { mutableStateOf(false) }
-    var editingId by remember { mutableStateOf<String?>(null) }
-    var templateId by remember { mutableStateOf<String?>(null) }
-    var editorKey by remember { mutableIntStateOf(0) }
-
     // 首屏落点：null 表示还在读引导标记（几十毫秒的磁盘读），读完再建 NavHost，
     // 避免先闪一下明细页再跳到引导（那样返回栈里会多一层，用户按返回会很怪）。
     var startDestination by remember { mutableStateOf<String?>(null) }
@@ -61,23 +52,13 @@ fun XxjzApp(
     // 判定收在 MainChrome 里，避免此处各写一套后再把主 Tab 误判成二级页
     val isDetail = MainChrome.isDetail(route)
 
-    fun openEditor(
-        id: String? = null,
-        template: String? = null,
-    ) {
-        editingId = id
-        templateId = template
-        editorKey += 1
-        editorOpen = true
-    }
-
     Surface(modifier = Modifier.fillMaxSize()) {
         // 快捷方式只在挂载时消费一次：`shortcut` 被置空后就什么都不做，
         // 不会因为重组反复弹面板或反复跳页。
         LaunchedEffect(shortcut) {
             val action = shortcut ?: return@LaunchedEffect
             when (action) {
-                ShortcutAction.NEW_EXPENSE -> openEditor()
+                ShortcutAction.NEW_EXPENSE -> navController.navigate(Routes.editor())
                 ShortcutAction.OPEN_REPORT -> navController.navigate(Routes.REPORT)
                 ShortcutAction.OPEN_SEARCH -> navController.navigate(Routes.SEARCH)
             }
@@ -121,26 +102,11 @@ fun XxjzApp(
                 ) {
                     appNavGraph(
                         navController = navController,
-                        onOpenEditor = { id, template -> openEditor(id, template) },
                         onMenuClick = { drawerOpen = true },
-                        onAdd = {
-                            onAdd()
-                            openEditor()
-                        },
+                        onAdd = onAdd,
                     )
                 }
             }
-        }
-
-        if (editorOpen) {
-            val editorViewModel: EditorViewModel = hiltViewModel(key = "editor-$editorKey")
-            EditorSheet(
-                viewModel = editorViewModel,
-                editTxnId = editingId,
-                templateId = templateId,
-                onDismiss = { editorOpen = false },
-                onSaved = { editorOpen = false },
-            )
         }
     }
 }

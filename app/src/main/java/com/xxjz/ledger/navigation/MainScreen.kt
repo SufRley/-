@@ -1,5 +1,6 @@
 package com.xxjz.ledger.navigation
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -8,20 +9,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DonutLarge
+import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
+import androidx.compose.material.icons.outlined.DonutLarge
+import androidx.compose.material.icons.outlined.ReceiptLong
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
@@ -49,12 +56,11 @@ fun MainScreen(
 }
 
 /**
- * 底部导航栏：三个等宽 Tab，**纯汉字、无图标**（PRD v1.9.0 第 1 条）。
+ * 底部导航栏：三个 Tab，**只显示图标、不显示文字**（PRD v1.9.0 第 2 条）。
  *
- * 为什么去掉图标：屏宽 360dp 除以 3 只剩 120dp 一格，图标 + 汉字挤在一起时汉字只有
- * `labelMedium` 那么小，读起来比没有图标还费劲。只留汉字、字号抬到 `titleSmall`，
- * 反而更好认。也保留 `NavigationBarItem` 而不是自绘 Row——选中指示器、水波纹、
- * 无障碍角色都是 Material3 现成的。
+ * 上一版把「去掉汉字」做成了「去掉图标」，反了：用户要的是「别写字，用小图标」。
+ * 这里选中用实心图标 + 主色 + 指示胶囊，未选中用线性图标 + 灰，选中时再来一点点放大，
+ * 让「我现在在哪个 Tab」一眼可辨，不需要文字帮忙。
  */
 @Composable
 fun XxjzBottomBar(
@@ -65,35 +71,59 @@ fun XxjzBottomBar(
         NavigationBar {
             MainTab.entries.forEach { tab ->
                 val selected = currentRoute == tab.route
+                // 选中轻微放大：纯图标导航少了文字锚点，这点动效就是最重要的位置提示
+                val scale by animateFloatAsState(
+                    targetValue = if (selected) 1.1f else 0.96f,
+                    label = "tab_scale",
+                )
                 NavigationBarItem(
                     selected = selected,
                     onClick = { onSelect(tab) },
-                    // 没有图标时 NavigationBarItem 会把 label 居中，
-                    // 传空 icon 即可，不必绕开这个组件
-                    icon = {},
-                    label = {
-                        Text(
-                            text = tab.label,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            color =
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
+                    icon = {
+                        Icon(
+                            imageVector = tabIcon(tab, selected),
+                            // 不显示文字，但读屏仍要能念出这一项是什么
+                            contentDescription = tab.label,
+                            modifier =
+                                Modifier
+                                    .size(26.dp)
+                                    .graphicsLayer {
+                                        scaleX = scale
+                                        scaleY = scale
+                                    },
                         )
                     },
-                    // 没有图标之后，读屏需要显式告知这一项讲的是什么
-                    modifier =
-                        Modifier
-                            .testTag("tab_${tab.route}")
-                            .semantics { contentDescription = tab.label },
+                    label = null,
+                    alwaysShowLabel = false,
+                    colors =
+                        NavigationBarItemDefaults.colors(
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
+                    modifier = Modifier.testTag("tab_${tab.route}"),
                 )
             }
         }
     }
 }
+
+/**
+ * 每个 Tab 的图标：选中用实心、未选中用线性。
+ *
+ * 挑图标的偏心思路——「明细」用带锯齿边的小票（ReceiptLong）、「报表」用甜甜圈图（DonutLarge）、
+ * 「账户」用钱包（AccountBalanceWallet）：三个形状差异大，缩到 26dp 也不会看混。
+ */
+private fun tabIcon(
+    tab: MainTab,
+    selected: Boolean,
+): ImageVector =
+    when (tab) {
+        MainTab.LEDGER -> if (selected) Icons.Filled.ReceiptLong else Icons.Outlined.ReceiptLong
+        MainTab.REPORT -> if (selected) Icons.Filled.DonutLarge else Icons.Outlined.DonutLarge
+        MainTab.ACCOUNTS ->
+            if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
+    }
 
 /**
  * 明细页右下角的悬浮「＋」（PRD D9）。

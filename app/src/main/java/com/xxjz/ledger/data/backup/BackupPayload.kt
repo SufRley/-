@@ -104,6 +104,8 @@ data class TxnDto(
     val debtAction: String? = null,
     /** 分期计划 id（v1.9.0）；老备份无此字段时为 null。 */
     val installmentId: String? = null,
+    /** 收据照片路径（v1.9.1）；老备份无此字段时为 null。 */
+    val photoPath: String? = null,
     val deletedAt: Long? = null,
     val createdAt: Long = 0,
     val updatedAt: Long = 0,

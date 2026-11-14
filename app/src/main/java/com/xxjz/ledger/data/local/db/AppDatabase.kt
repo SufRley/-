@@ -89,7 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** 当前 schema 版本；备份与导入的兼容性判断都读这里。 */
-        const val SCHEMA_VERSION = 7
+        const val SCHEMA_VERSION = 8
 
         const val NAME = "xxjz.db"
         const val SEED_VERSION = 1

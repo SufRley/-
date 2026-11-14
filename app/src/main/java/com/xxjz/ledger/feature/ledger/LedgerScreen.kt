@@ -1,7 +1,9 @@
 package com.xxjz.ledger.feature.ledger
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,18 +25,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -58,22 +65,51 @@ import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.navigation.AddFab
 
+/**
+ * 明细页需要的跳转回调（v1.9.1）。
+ *
+ * 以前是一个个 `() -> Unit` 参数，到 v1.9.1 已经 11 个，逼近 detekt 的 12 个上限。
+ * 打包成一个不可变的数据类：加新跳转只改这里，[LedgerScreen] 的签名不再膨胀，
+ * 也让「这个页面能跳到哪去」变成一份可读的清单。
+ */
+data class LedgerNav(
+    val onAdd: () -> Unit = {},
+    val onOpenTxn: (String) -> Unit = {},
+    val onEditTxn: (String) -> Unit = {},
+    val onOpenAccount: (String) -> Unit = {},
+    val onOpenRecurring: () -> Unit = {},
+    val onUseTemplate: (String) -> Unit = {},
+    val onOpenSearch: () -> Unit = {},
+    val onOpenCalendar: () -> Unit = {},
+    val onOpenBackup: () -> Unit = {},
+    val onOpenBudget: () -> Unit = {},
+    val onMenu: () -> Unit = {},
+)
+
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
 @Composable
 fun LedgerScreen(
-    onAdd: () -> Unit = {},
-    onOpen: (String) -> Unit = {},
-    onUseTemplate: (String) -> Unit = {},
-    onOpenSearch: () -> Unit = {},
-    onOpenCalendar: () -> Unit = {},
-    onOpenBackup: () -> Unit = {},
-    onOpenBudget: () -> Unit = {},
-    onMenu: () -> Unit = {},
+    nav: LedgerNav = LedgerNav(),
     viewModel: LedgerViewModel = hiltViewModel(),
 ) {
+    val onAdd = nav.onAdd
+    val onOpen = nav.onOpenTxn
+    val onOpenAccount = nav.onOpenAccount
+    val onOpenRecurring = nav.onOpenRecurring
+    val onUseTemplate = nav.onUseTemplate
+    val onEdit = nav.onEditTxn
+    val onOpenSearch = nav.onOpenSearch
+    val onOpenCalendar = nav.onOpenCalendar
+    val onOpenBackup = nav.onOpenBackup
+    val onOpenBudget = nav.onOpenBudget
+    val onMenu = nav.onMenu
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var showMonthPicker by remember { mutableStateOf(false) }
+    // 长按 / 左滑 / 批量模式（PRD v1.9.0 第 3 条）
+    var menuRow by remember { mutableStateOf<TxnRow?>(null) }
+    var selecting by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
 
@@ -146,7 +182,20 @@ fun LedgerScreen(
                     state.groups.forEach { group ->
                         item(key = "head_${group.dateKey}") { DayHeader(group) }
                         items(group.rows, key = { it.txn.id }) { row ->
-                            TxnItem(row) { onOpen(row.txn.id) }
+                            TxnItem(
+                                row = row,
+                                selecting = selecting,
+                                selected = row.txn.id in selectedIds,
+                                onClick = {
+                                    if (selecting) {
+                                        selectedIds = selectedIds.toggle(row.txn.id)
+                                    } else {
+                                        onOpen(row.txn.id)
+                                    }
+                                },
+                                onLongClick = { if (!selecting) menuRow = row },
+                                onDelete = { viewModel.delete(row.txn.id) },
+                            )
                         }
                     }
                     // 预算概览卡固定在列表最下层（v1.8.0 / PRD F4、D7）
@@ -156,11 +205,46 @@ fun LedgerScreen(
                 }
             }
         }
-        // 悬浮「＋」只在明细页出现（PRD D9）
-        AddFab(
-            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 24.dp),
-            onClick = onAdd,
+        if (selecting) {
+            BatchActionBar(
+                count = selectedIds.size,
+                onCancel = {
+                    selecting = false
+                    selectedIds = emptySet()
+                },
+                onReimburse = {
+                    val chosen = state.groups.flatMap { it.rows }.filter { it.txn.id in selectedIds }
+                    viewModel.batchReimburse(chosen.map { it.txn })
+                    selecting = false
+                    selectedIds = emptySet()
+                },
+                onDelete = {
+                    viewModel.batchDelete(selectedIds)
+                    selecting = false
+                    selectedIds = emptySet()
+                },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
+        TxnMenuHost(
+            target = menuRow,
+            viewModel = viewModel,
+            onOpenAccount = onOpenAccount,
+            onOpenRecurring = onOpenRecurring,
+            onEditTxn = onEdit,
+            onStartBatch = { row ->
+                selecting = true
+                selectedIds = setOf(row.txn.id)
+            },
+            onDismiss = { menuRow = null },
         )
+        // 悬浮「＋」只在明细页出现（PRD D9）；批量模式下藏起来，免得挡住操作栏
+        if (!selecting) {
+            AddFab(
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 24.dp),
+                onClick = onAdd,
+            )
+        }
         SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
 }
@@ -335,74 +419,149 @@ private fun DayHeader(group: DayGroup) {
     }
 }
 
+/**
+ * 一条流水（PRD v1.9.0 第 3 条）。
+ *
+ * 三种交互叠在一起：轻点打开详情、长按弹动作面板、往左滑删除。
+ * 批量模式下关掉左滑，否则勾选时手一抖就把账删了。
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TxnItem(
     row: TxnRow,
+    selecting: Boolean,
+    selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     val txn = row.txn
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val dismissState =
+        rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.EndToStart && !selecting) {
+                    onDelete()
+                    true
+                } else {
+                    false
+                }
+            },
+        )
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        enableDismissFromEndToStart = !selecting,
+        backgroundContent = { DeleteBackground() },
+        modifier = Modifier.testTag("txn_swipe_${txn.id}"),
     ) {
-        Box(
+        Row(
             modifier =
                 Modifier
-                    .size(38.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-            contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    // 必须有背景：否则左滑时内容透明，红底会透上来
+                    .background(MaterialTheme.colorScheme.surface)
+                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .testTag("txn_item_${txn.id}"),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = row.categoryName.take(1),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(row.categoryName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                if (txn.excludedFromStats) {
-                    Spacer(Modifier.width(6.dp))
+            if (selecting) {
+                Checkbox(
+                    checked = selected,
+                    onCheckedChange = { onClick() },
+                    modifier = Modifier.padding(end = 8.dp),
+                )
+            }
+            Box(
+                modifier =
+                    Modifier
+                        .size(38.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = row.categoryName.take(1),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.categoryName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                    if (txn.pendingReimbursement) {
+                        TinyBadge("待报销", "badge_reimburse_${txn.id}")
+                    }
+                    if (txn.excludedFromStats) {
+                        TinyBadge("不计入", "badge_excluded_${txn.id}")
+                    }
+                }
+                val sub =
+                    buildString {
+                        if (txn.note.isNotBlank()) append(txn.note)
+                        if (txn.type == TxnType.TRANSFER) {
+                            if (isNotEmpty()) append(" · ")
+                            append("转账")
+                        }
+                    }
+                if (sub.isNotEmpty()) {
                     Text(
-                        "不计入",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = sub,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            val sub =
-                buildString {
-                    if (txn.note.isNotBlank()) append(txn.note)
-                    if (txn.type == TxnType.TRANSFER) {
-                        if (isNotEmpty()) append(" · ")
-                        append("转账")
-                    }
-                }
-            if (sub.isNotEmpty()) {
-                Text(
-                    text = sub,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            AmountText(
+                cents = txn.amount,
+                direction =
+                    when (txn.type) {
+                        TxnType.INCOME -> AmountDirection.INCOME
+                        TxnType.EXPENSE -> AmountDirection.EXPENSE
+                        else -> AmountDirection.NEUTRAL
+                    },
+                signed = txn.type != TxnType.TRANSFER,
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
-        AmountText(
-            cents = txn.amount,
-            direction =
-                when (txn.type) {
-                    TxnType.INCOME -> AmountDirection.INCOME
-                    TxnType.EXPENSE -> AmountDirection.EXPENSE
-                    else -> AmountDirection.NEUTRAL
-                },
-            signed = txn.type != TxnType.TRANSFER,
-            style = MaterialTheme.typography.bodyLarge,
+    }
+}
+
+/** 左滑露出的红底：图标贴右，与「往左滑」的手势方向一致。 */
+@Composable
+private fun DeleteBackground() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .padding(horizontal = 24.dp),
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.DeleteOutline,
+            contentDescription = "删除",
+            tint = MaterialTheme.colorScheme.onErrorContainer,
         )
     }
 }
+
+/** 小标签：待报销 / 不计入。 */
+@Composable
+private fun TinyBadge(
+    text: String,
+    tag: String,
+) {
+    Spacer(Modifier.width(6.dp))
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.testTag(tag),
+    )
+}
+
+/** 勾选集合的增删。 */
+private fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id

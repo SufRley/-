@@ -6,6 +6,7 @@ import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
+import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
@@ -13,6 +14,7 @@ import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
+import com.xxjz.ledger.testutil.FakeTagRepository
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import io.mockk.coEvery
@@ -42,6 +44,7 @@ class EditorViewModelTest {
     private val categoryRepo = FakeCategoryRepository()
     private val accountRepo = FakeAccountRepository()
     private val templateRepo = FakeTemplateRepository()
+    private val tagRepo = FakeTagRepository()
     private val settings = mockk<SettingsDataStore>(relaxed = true)
 
     @BeforeEach
@@ -73,6 +76,7 @@ class EditorViewModelTest {
                 settings = settings,
                 recordDebtOp = RecordDebtOpUseCase(accountRepo, txnRepo),
                 saveDebtAccount = SaveDebtAccountUseCase(accountRepo, RecordDebtOpUseCase(accountRepo, txnRepo)),
+                tagRepository = tagRepo,
             )
         return vm
     }
@@ -257,5 +261,175 @@ class EditorViewModelTest {
 
             assertEquals("表达式不完整，请补全金额", vm.state.value.error)
             assertTrue(txnRepo.items.isEmpty())
+        }
+
+    // ---------- v1.9.1 第 5 条：全屏记账页新增的数据行为 ----------
+
+    @Test
+    fun `切换类型会清掉组合分摊，避免残留金额悄悄生效`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setSplitMode(true)
+            vm.setSplitAmount("acc-1", "30")
+            assertEquals(3000L, vm.state.value.splitTotal)
+
+            vm.setType(TxnType.TRANSFER)
+
+            assertFalse(vm.state.value.splitMode)
+            assertTrue(vm.state.value.splits.isEmpty())
+        }
+
+    @Test
+    fun `组合支付按账户各写一条流水并标注份数`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.setNote("午饭")
+            vm.setSplitMode(true)
+            vm.setSplitAmount("acc-1", "30")
+            vm.setSplitAmount("acc-2", "20")
+
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals(2, txnRepo.items.size)
+            assertEquals(listOf(3000L, 2000L), txnRepo.items.values.map { it.amount }.sortedDescending())
+            assertTrue(txnRepo.items.values.all { it.note.contains("组合") })
+        }
+
+    @Test
+    fun `组合支付只填一个账户时拒绝保存`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.setSplitMode(true)
+            vm.setSplitAmount("acc-1", "30")
+
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertTrue(txnRepo.items.isEmpty())
+            assertEquals("组合支付至少要两个账户各出一部分", vm.state.value.error)
+        }
+
+    @Test
+    fun `清空某个账户的分摊金额等于把它从组合里去掉`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setSplitMode(true)
+            vm.setSplitAmount("acc-1", "30")
+            vm.setSplitAmount("acc-1", "")
+
+            assertTrue(vm.state.value.splits.isEmpty())
+        }
+
+    @Test
+    fun `快捷分类按使用次数排序，次数相同按原有顺序`() =
+        runTest(dispatcher.scheduler) {
+            categoryRepo.categories =
+                listOf(
+                    Category(id = "c1", name = "一", type = TxnType.EXPENSE, sortOrder = 1, usageCount = 0),
+                    Category(id = "c2", name = "二", type = TxnType.EXPENSE, sortOrder = 2, usageCount = 9),
+                    Category(id = "c3", name = "三", type = TxnType.EXPENSE, sortOrder = 3, usageCount = 0),
+                    Category(id = "i1", name = "收", type = TxnType.INCOME, usageCount = 99),
+                )
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals(listOf("c2", "c1", "c3"), vm.state.value.quickCategories.map { it.id })
+        }
+
+    @Test
+    fun `快捷分类只取前12个，刚好三行四列`() =
+        runTest(dispatcher.scheduler) {
+            categoryRepo.categories =
+                (1..20).map { Category(id = "c$it", name = "$it", type = TxnType.EXPENSE, sortOrder = it) }
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals(QUICK_CATEGORY_SLOTS, vm.state.value.quickCategories.size)
+            assertEquals(12, QUICK_CATEGORY_SLOTS)
+        }
+
+    @Test
+    fun `标签可以来回切换`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.toggleTag("t1")
+            assertTrue("t1" in vm.state.value.selectedTagIds)
+            vm.toggleTag("t1")
+            assertFalse("t1" in vm.state.value.selectedTagIds)
+        }
+
+    @Test
+    fun `保存时把选中的标签挂到流水上`() =
+        runTest(dispatcher.scheduler) {
+            tagRepo.items["t1"] = Tag(id = "t1", name = "出差")
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.toggleTag("t1")
+
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            val txnId = txnRepo.items.keys.first()
+            assertEquals(listOf("t1"), tagRepo.linksOf(txnId))
+        }
+
+    @Test
+    fun `编辑已有账目会回填照片与标签`() =
+        runTest(dispatcher.scheduler) {
+            categoryRepo.categories = listOf(Category(id = "food", name = "餐饮", type = TxnType.EXPENSE))
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("food")
+            vm.digit('9')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val saved = txnRepo.items.values.first()
+            txnRepo.items[saved.id] = saved.copy(photoPath = "/tmp/r.jpg")
+            tagRepo.setTxnTags(saved.id, listOf("t1"))
+
+            val editor = viewModel()
+            editor.loadForEdit(saved.id)
+
+            assertEquals("/tmp/r.jpg", editor.state.value.photoPath)
+            assertEquals(setOf("t1"), editor.state.value.selectedTagIds)
+            assertEquals(saved.id, editor.state.value.editingId)
+        }
+
+    @Test
+    fun `编辑一笔组合账目会把原流水移出明细`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('4')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val original = txnRepo.items.values.first()
+
+            // 第二个账户必须在第一笔存完之后再加：只有一个账户时会被自动预选，
+            // 先加了就会在没有「唯一账户」的前提下保存失败
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            val editor = viewModel()
+            editor.loadForEdit(original.id)
+            editor.setSplitMode(true)
+            editor.setSplitAmount("acc-1", "25")
+            editor.setSplitAmount("acc-2", "15")
+            editor.submitOrEvaluate()
+            advanceUntilIdle()
+
+            val alive = txnRepo.items.values.filter { it.deletedAt == null }
+            assertFalse(alive.any { it.id == original.id }, "原流水应被软删除")
+            assertEquals(2, alive.size)
         }
 }

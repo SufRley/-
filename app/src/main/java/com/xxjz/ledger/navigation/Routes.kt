@@ -15,6 +15,20 @@ object Routes {
 
     fun txnDetail(id: String): String = "txn/$id"
 
+    /**
+     * 全屏记账页（v1.9.1 第 5 条）。
+     *
+     * 以前是挂在根节点的 ModalBottomSheet，用户明确说「不要抽屉，点加号后是另一个页面」，
+     * 于是改成正经路由。两个可选参数：传 [ARG_TXN_ID] 是编辑，传 [ARG_TEMPLATE_ID] 是套模板。
+     */
+    const val EDITOR = "editor?txnId={txnId}&templateId={templateId}"
+    const val ARG_TEMPLATE_ID = "templateId"
+
+    fun editor(
+        txnId: String? = null,
+        templateId: String? = null,
+    ): String = "editor?txnId=${txnId.orEmpty()}&templateId=${templateId.orEmpty()}"
+
     /** 模板管理 P05。 */
     const val TEMPLATES = "templates"
 

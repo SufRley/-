@@ -51,6 +51,8 @@ data class TxnEntity(
     @ColumnInfo(name = "debtAction") val debtAction: String? = null,
     /** 分期计划 id（v1.9.0）：这笔还款冲抵的是哪个分期，普通账单还款为空。 */
     @ColumnInfo(name = "installmentId") val installmentId: String? = null,
+    /** 收据照片路径（v1.9.1），空表示没有附图。 */
+    @ColumnInfo(name = "photoPath") val photoPath: String? = null,
     @ColumnInfo(name = "deletedAt") val deletedAt: Long?,
     @ColumnInfo(name = "createdAt") val createdAt: Long,
     @ColumnInfo(name = "updatedAt") val updatedAt: Long,

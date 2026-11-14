@@ -27,6 +27,8 @@ data class TxnDraft(
     val note: String = "",
     val excludedFromStats: Boolean = false,
     val pendingReimbursement: Boolean = false,
+    /** 收据照片路径（v1.9.1），null 表示没有附图。 */
+    val photoPath: String? = null,
 )
 
 /**
@@ -72,6 +74,8 @@ class SaveTxnUseCase
                     note = draft.note.trim(),
                     excludedFromStats = draft.excludedFromStats,
                     pendingReimbursement = draft.pendingReimbursement && draft.type == TxnType.EXPENSE,
+                    // 编辑时不传 photoPath 就沿用原图：否则改个备注会把附图弄丢
+                    photoPath = draft.photoPath ?: existing?.photoPath,
                     createdAt = existing?.createdAt ?: now,
                     updatedAt = now,
                 )

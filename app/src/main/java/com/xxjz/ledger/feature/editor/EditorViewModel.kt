@@ -12,9 +12,11 @@ import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.DebtAction
 import com.xxjz.ledger.domain.model.DebtDirection
+import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
+import com.xxjz.ledger.domain.repository.TagRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.DebtAccountDraft
@@ -34,6 +36,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import javax.inject.Inject
+
+/** 快捷分类格子的数量：3 行 × 4 列（PRD v1.9.1 第 5 条）。 */
+const val QUICK_CATEGORY_SLOTS = 12
 
 /** 记账面板一次性事件。 */
 sealed interface EditorEvent {
@@ -69,8 +74,46 @@ data class EditorUiState(
     val error: String? = null,
     /** 用户是否动过内容，用于误触关闭保护（AC-09）。 */
     val dirty: Boolean = false,
+    /** 组合支付开关（PRD v1.9.1）：一笔消费由多个账户共同出账。 */
+    val splitMode: Boolean = false,
+    /** 组合支付时各账户承担的金额（分），键为账户 id。 */
+    val splits: Map<String, Long> = emptyMap(),
+    /** 收据照片本地路径（PRD v1.9.1）。 */
+    val photoPath: String? = null,
+    /** 全部标签，供「常用标签」两行展示。 */
+    val tags: List<Tag> = emptyList(),
+    val selectedTagIds: Set<String> = emptySet(),
 ) {
     val amountCents: Long? get() = CalcEngine.centsOf(calc)
+
+    /** 组合支付的合计金额；未填任何账户时为 0。 */
+    val splitTotal: Long get() = splits.values.sum()
+
+    /**
+     * 真正要保存的金额：组合模式下由各账户合计决定，单选模式下用计算器输入。
+     *
+     * 组合支付时计算器仍可拨，但不参与结算——否则「各账户加起来 100、计算器写 200」
+     * 会出现两套真相，用户不知道哪个生效。
+     */
+    val effectiveAmount: Long?
+        get() = if (splitMode) splitTotal.takeIf { it > 0L } else amountCents
+
+    /**
+     * 3 行 4 列快捷分类（PRD v1.9.1 第 5 条）。
+     *
+     * 排序规则：用过越多次越靠前（常用优先），次数相同按 [Category.sortOrder] 保持原有次序——
+     * 不这么做的话，没记过账的用户看到的 12 个格子会是随机顺序，反而更难找。
+     */
+    val quickCategories: List<Category>
+        get() {
+            if (type != TxnType.EXPENSE && type != TxnType.INCOME) return emptyList()
+            return categories
+                .asSequence()
+                .filter { it.type == type && !it.hidden }
+                .sortedWith(compareByDescending<Category> { it.usageCount }.thenBy { it.sortOrder })
+                .take(QUICK_CATEGORY_SLOTS)
+                .toList()
+        }
 
     val feeCents: Long get() = MoneyFormatter.yuanToCents(feeText) ?: 0L
 
@@ -116,6 +159,7 @@ class EditorViewModel
         private val recordDebtOp: RecordDebtOpUseCase,
         private val saveDebtAccount: SaveDebtAccountUseCase,
         private val settings: SettingsRepository,
+        private val tagRepository: TagRepository,
     ) : ViewModel() {
         private val _state = MutableStateFlow(EditorUiState())
         val state: StateFlow<EditorUiState> = _state.asStateFlow()
@@ -126,7 +170,14 @@ class EditorViewModel
         init {
             observeCategories()
             observeAccounts()
+            observeTags()
             applyDefaultTime()
+        }
+
+        private fun observeTags() {
+            viewModelScope.launch {
+                tagRepository.observeAll().collect { list -> _state.update { it.copy(tags = list) } }
+            }
         }
 
         private fun observeCategories() {
@@ -163,9 +214,15 @@ class EditorViewModel
             }
         }
 
-        /** 编辑模式预填。 */
+        /**
+         * 编辑模式预填。
+         *
+         * v1.9.1 补齐了三处以前漏掉的字段：借贷方向（以前编辑一笔借入会被悄悄改成借出）、
+         * 照片、已选标签。编辑的本质是「原样打开」，任何一项丢失都算数据损坏的观感。
+         */
         suspend fun loadForEdit(txnId: String) {
             val txn = txnRepository.byId(txnId) ?: return
+            val tagIds = runCatching { tagRepository.tagIdsOf(txn.id) }.getOrDefault(emptyList()).toSet()
             _state.update {
                 it.copy(
                     editingId = txn.id,
@@ -174,9 +231,19 @@ class EditorViewModel
                     categoryId = txn.categoryId,
                     accountId = txn.accountId,
                     toAccountId = txn.toAccountId,
+                    // 借贷流水里 accountId 是对方、toAccountId 是资金账户，与新建时的字段语义相反
+                    debtAccountId = if (txn.type == TxnType.DEBT) txn.accountId else it.debtAccountId,
+                    debtDirection =
+                        if (txn.type == TxnType.DEBT && txn.debtAction == DebtAction.BORROW_IN) {
+                            DebtDirection.BORROW
+                        } else {
+                            DebtDirection.LEND
+                        },
                     dateTime = txn.dateTime,
                     note = txn.note,
                     feeText = if (txn.fee > 0) MoneyFormatter.centsToPlain(txn.fee) else "",
+                    photoPath = txn.photoPath,
+                    selectedTagIds = tagIds,
                     dirty = false,
                 )
             }
@@ -245,6 +312,9 @@ class EditorViewModel
                     // 借贷不选分类，资金账户也不能是借贷账户
                     accountId = if (type == TxnType.DEBT) it.fundAccounts.firstOrNull()?.id else it.accountId,
                     debtAccountId = if (type == TxnType.DEBT) it.debtAccounts.firstOrNull()?.id else null,
+                    // 组合支付只对收支有意义：转账与借贷是「一进一出」的一对，拆开就成了两笔错账
+                    splitMode = it.splitMode && type != TxnType.TRANSFER && type != TxnType.DEBT,
+                    splits = if (type == TxnType.TRANSFER || type == TxnType.DEBT) emptyMap() else it.splits,
                     dirty = true,
                 )
             }
@@ -319,14 +389,54 @@ class EditorViewModel
 
         fun dismissError() = _state.update { it.copy(error = null) }
 
+        // ---------- 组合支付 / 照片 / 标签（PRD v1.9.1 第 5 条） ----------
+
+        /** 切换单选 / 组合。切回单选时清空分摊，避免残留金额悄悄生效。 */
+        fun setSplitMode(on: Boolean) =
+            _state.update {
+                it.copy(splitMode = on, splits = if (on) it.splits else emptyMap(), dirty = true)
+            }
+
+        /**
+         * 设置某个账户在组合支付里出多少钱。
+         *
+         * 传空串或 0 视为把这个账户从组合里去掉——用户清空输入框的意图就是「不用它付」。
+         */
+        fun setSplitAmount(
+            accountId: String,
+            text: String,
+        ) {
+            val cents = MoneyFormatter.yuanToCents(text) ?: 0L
+            _state.update {
+                val next = it.splits.toMutableMap()
+                if (cents <= 0L) next.remove(accountId) else next[accountId] = cents
+                it.copy(splits = next, dirty = true)
+            }
+        }
+
+        fun removeSplit(accountId: String) = _state.update { it.copy(splits = it.splits - accountId, dirty = true) }
+
+        fun setPhoto(path: String?) = _state.update { it.copy(photoPath = path, dirty = true) }
+
+        fun toggleTag(tagId: String) =
+            _state.update {
+                val next = if (tagId in it.selectedTagIds) it.selectedTagIds - tagId else it.selectedTagIds + tagId
+                it.copy(selectedTagIds = next, dirty = true)
+            }
+
+        /** 常用标签：按使用次数取前 10 个，两行横向滑动刚好放得下。 */
+        fun quickTags(): List<Tag> = _state.value.tags.sortedByDescending { it.usageCount }.take(10)
+
         // ---------- 保存 ----------
 
         fun submit() {
             val s = _state.value
             if (s.saving) return
-            val cents = s.amountCents
+            // 组合支付时金额由各账户合计决定，不吃计算器的值
+            val cents = s.effectiveAmount
             if (cents == null) {
-                val reason = s.calc.error ?: "请输入大于 0 的金额"
+                val reason =
+                    if (s.splitMode) "请至少给两个账户填金额" else (s.calc.error ?: "请输入大于 0 的金额")
                 _state.update { it.copy(error = reason) }
                 return
             }
@@ -334,6 +444,10 @@ class EditorViewModel
             // 一条流水要同时改动借贷账户与资金账户（PRD 2.2）
             if (s.type == TxnType.DEBT) {
                 submitDebt(s, cents)
+                return
+            }
+            if (s.splitMode) {
+                submitSplit(s)
                 return
             }
             val draft =
@@ -347,12 +461,14 @@ class EditorViewModel
                     feeCents = if (s.type == TxnType.TRANSFER) s.feeCents else 0,
                     dateTime = s.dateTime,
                     note = s.note,
+                    photoPath = s.photoPath,
                 )
             viewModelScope.launch {
                 _state.update { it.copy(saving = true, error = null) }
                 when (val result = saveTxn(draft)) {
                     is AppResult.Success -> {
                         runCatching { settings.setLastTxnType(s.type) }
+                        saveTags(result.data, s.selectedTagIds)
                         _state.update { it.copy(saving = false) }
                         _events.emit(EditorEvent.Saved(result.data))
                     }
@@ -361,6 +477,73 @@ class EditorViewModel
                     }
                 }
             }
+        }
+
+        /**
+         * 组合支付保存：每个账户各生成一条流水（PRD v1.9.1 第 5 条，用户选定「各显示 1 条」）。
+         *
+         * 这样余额自然各扣各的，明细里也看得出「这笔到底谁付了多少」；
+         * 备注追加「组合 i/n」，方便日后一眼认出它们本是一笔。
+         *
+         * 编辑模式下先把原流水软删除再落新的：一笔账拆成 N 条之后，原来那条已经没有意义了。
+         * 放回收站而不是物理删除，用户后悔还能捞回来。
+         */
+        private fun submitSplit(s: EditorUiState) {
+            val parts = s.splits.filterValues { it > 0L }
+            if (parts.size < 2) {
+                _state.update { it.copy(error = "组合支付至少要两个账户各出一部分") }
+                return
+            }
+            viewModelScope.launch {
+                _state.update { it.copy(saving = true, error = null) }
+                var lastId: String? = null
+                var index = 0
+                for ((accountId, cents) in parts) {
+                    index += 1
+                    val note =
+                        if (parts.size > 1) {
+                            "${s.note}（组合 $index/${parts.size}）".trim().take(200)
+                        } else {
+                            s.note
+                        }
+                    val draft =
+                        TxnDraft(
+                            type = s.type,
+                            amountCents = cents,
+                            categoryId = s.categoryId,
+                            accountId = accountId,
+                            dateTime = s.dateTime,
+                            note = note,
+                            photoPath = s.photoPath,
+                        )
+                    when (val result = saveTxn(draft)) {
+                        is AppResult.Success -> {
+                            lastId = result.data
+                            saveTags(result.data, s.selectedTagIds)
+                        }
+                        is AppResult.Failure -> {
+                            _state.update { it.copy(saving = false, error = result.error.message) }
+                            return@launch
+                        }
+                    }
+                }
+                val finalId = lastId
+                if (finalId != null) {
+                    s.editingId?.let { runCatching { txnRepository.softDelete(it, System.currentTimeMillis()) } }
+                    runCatching { settings.setLastTxnType(s.type) }
+                    _state.update { it.copy(saving = false) }
+                    _events.emit(EditorEvent.Saved(finalId))
+                }
+            }
+        }
+
+        /** 标签写入：失败不阻断保存，标签丢总比账没记上好。 */
+        private suspend fun saveTags(
+            txnId: String,
+            tagIds: Set<String>,
+        ) {
+            if (tagIds.isEmpty()) return
+            runCatching { tagRepository.setTxnTags(txnId, tagIds.toList()) }
         }
 
         /**

@@ -49,6 +49,8 @@ data class Txn(
     val debtAction: DebtAction? = null,
     /** 分期计划 id（v1.9.0）：这笔还款冲抵的是哪个分期，普通账单还款为空。 */
     val installmentId: String? = null,
+    /** 收据照片的本地绝对路径（v1.9.1），没有附图时为 null。 */
+    val photoPath: String? = null,
     /** 软删除时间，非空表示在回收站。 */
     val deletedAt: Long? = null,
     val createdAt: Long,

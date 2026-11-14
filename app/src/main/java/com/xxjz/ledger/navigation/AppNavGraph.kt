@@ -1,5 +1,6 @@
 package com.xxjz.ledger.navigation
 
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -13,7 +14,10 @@ import com.xxjz.ledger.feature.budget.BudgetScreen
 import com.xxjz.ledger.feature.calendar.CalendarScreen
 import com.xxjz.ledger.feature.category.CategoryManageScreen
 import com.xxjz.ledger.feature.detail.TxnDetailScreen
+import com.xxjz.ledger.feature.editor.EditorScreen
+import com.xxjz.ledger.feature.editor.EditorViewModel
 import com.xxjz.ledger.feature.export.CsvExportScreen
+import com.xxjz.ledger.feature.ledger.LedgerNav
 import com.xxjz.ledger.feature.ledger.LedgerScreen
 import com.xxjz.ledger.feature.mine.MineScreen
 import com.xxjz.ledger.feature.onboarding.OnboardingScreen
@@ -35,11 +39,11 @@ import com.xxjz.ledger.feature.trash.TrashScreen
  * 拆的理由很实际：27 个页面的注册把 `XxjzApp` 撑到 250 行，改一个页面的回调要在几百行里找，
  * 而这里除了「路由 → 页面」的映射没有别的逻辑，单拎出来看页面清单也更清楚。
  *
- * @param onOpenEditor 打开记账面板；(流水 id, 模板 id) 二选一，全 null 表示新建。
+ * 记账页 v1.9.1 起是全屏路由（[Routes.EDITOR]），不再需要外部注入「打开面板」的回调，
+ * 各页面直接 navigate 过去即可。
  */
 internal fun NavGraphBuilder.appNavGraph(
     navController: NavHostController,
-    onOpenEditor: (id: String?, templateId: String?) -> Unit,
     onMenuClick: () -> Unit = {},
     onAdd: () -> Unit = {},
 ) {
@@ -52,16 +56,45 @@ internal fun NavGraphBuilder.appNavGraph(
             },
         )
     }
+    composable(
+        route = Routes.EDITOR,
+        arguments =
+            listOf(
+                navArgument(Routes.ARG_TXN_ID) {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+                navArgument(Routes.ARG_TEMPLATE_ID) {
+                    type = NavType.StringType
+                    defaultValue = ""
+                },
+            ),
+    ) { entry ->
+        val viewModel: EditorViewModel = hiltViewModel()
+        EditorScreen(
+            viewModel = viewModel,
+            editTxnId = entry.arguments?.getString(Routes.ARG_TXN_ID)?.takeIf { it.isNotEmpty() },
+            templateId = entry.arguments?.getString(Routes.ARG_TEMPLATE_ID)?.takeIf { it.isNotEmpty() },
+            onDismiss = { navController.popBackStack() },
+            onSaved = { navController.popBackStack() },
+        )
+    }
     composable(Routes.LEDGER) {
         LedgerScreen(
-            onAdd = { onOpenEditor(null, null) },
-            onOpen = { id -> navController.navigate(Routes.txnDetail(id)) },
-            onUseTemplate = { id -> onOpenEditor(null, id) },
-            onOpenSearch = { navController.navigate(Routes.SEARCH) },
-            onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
-            onOpenBackup = { navController.navigate(Routes.BACKUP) },
-            onOpenBudget = { navController.navigate(Routes.BUDGET) },
-            onMenu = onMenuClick,
+            nav =
+                LedgerNav(
+                    onAdd = { navController.navigate(Routes.editor()) },
+                    onOpenTxn = { id -> navController.navigate(Routes.txnDetail(id)) },
+                    onEditTxn = { id -> navController.navigate(Routes.editor(txnId = id)) },
+                    onOpenAccount = { id -> navController.navigate(Routes.accountDetail(id)) },
+                    onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                    onUseTemplate = { id -> navController.navigate(Routes.editor(templateId = id)) },
+                    onOpenSearch = { navController.navigate(Routes.SEARCH) },
+                    onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
+                    onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                    onOpenBudget = { navController.navigate(Routes.BUDGET) },
+                    onMenu = onMenuClick,
+                ),
         )
     }
     composable(
@@ -70,16 +103,13 @@ internal fun NavGraphBuilder.appNavGraph(
     ) {
         TxnDetailScreen(
             onBack = { navController.popBackStack() },
-            onEdit = { id -> onOpenEditor(id, null) },
+            onEdit = { id -> navController.navigate(Routes.editor(txnId = id)) },
         )
     }
     composable(Routes.TEMPLATES) {
         TemplateListScreen(
             onBack = { navController.popBackStack() },
-            onUse = { id ->
-                navController.popBackStack()
-                onOpenEditor(null, id)
-            },
+            onUse = { id -> navController.navigate(Routes.editor(templateId = id)) },
         )
     }
     composable(Routes.ACCOUNTS) {

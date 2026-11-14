@@ -13,6 +13,15 @@
         本地库模式用不上（没有任何网络请求），因此显式移除，保证「装完看权限列表是干净的」。
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+        收据拍照（v1.9.1）：只声明相机，不声明读写存储。
+        相册走 Photo Picker（ActivityResultContracts.PickVisualMedia），系统代选，无需任何存储权限；
+        拍完的照片存进应用自己的 filesDir，也不涉及外部存储。
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
         tools:node="remove" />

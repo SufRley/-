@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.MoneyFormatter
+import com.xxjz.ledger.core.designsystem.component.CompactHeader
 import com.xxjz.ledger.core.designsystem.component.ConfirmDialog
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.core.designsystem.theme.profitColor
@@ -206,32 +207,28 @@ private fun AccountHeader(
     onOpenAssetReport: () -> Unit,
     onCreate: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (isRootTab) {
-            IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
-                Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+    CompactHeader(
+        title = title,
+        leading = {
+            if (isRootTab) {
+                IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
+                    Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+                }
+            } else {
+                IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                }
             }
-        } else {
-            IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+        },
+        actions = {
+            IconButton(onClick = onOpenAssetReport, modifier = Modifier.testTag("account_report")) {
+                Icon(Icons.Outlined.Insights, contentDescription = "资产报表")
             }
-        }
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f).padding(start = 8.dp),
-        )
-        IconButton(onClick = onOpenAssetReport, modifier = Modifier.testTag("account_report")) {
-            Icon(Icons.Outlined.Insights, contentDescription = "资产报表")
-        }
-        IconButton(onClick = onCreate, modifier = Modifier.testTag("account_add")) {
-            Icon(Icons.Outlined.Add, contentDescription = "新建账户")
-        }
-    }
+            IconButton(onClick = onCreate, modifier = Modifier.testTag("account_add")) {
+                Icon(Icons.Outlined.Add, contentDescription = "新建账户")
+            }
+        },
+    )
 }
 
 @Composable

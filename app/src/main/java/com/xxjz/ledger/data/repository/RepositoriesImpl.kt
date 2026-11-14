@@ -87,6 +87,9 @@ internal fun TxnEntity.toModel(): Txn =
         parentTxnId = parentTxnId,
         debtId = debtId,
         debtAction = parseDebtAction(debtAction),
+        // v1.9.1 顺手补上：此前 toModel 漏了 installmentId，分期标签读出来恒为 null
+        installmentId = installmentId,
+        photoPath = photoPath,
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,
@@ -118,6 +121,7 @@ internal fun Txn.toEntity(): TxnEntity =
         debtId = debtId,
         debtAction = debtAction?.name,
         installmentId = installmentId,
+        photoPath = photoPath,
         deletedAt = deletedAt,
         createdAt = createdAt,
         updatedAt = updatedAt,

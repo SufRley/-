@@ -166,6 +166,26 @@ val MIGRATION_6_7: Migration =
         }
     }
 
+/**
+ * v7 → v8：账目加一列收据照片路径（PRD v1.9.1 第 5 条「相机」）。
+ *
+ * 用 `addColumnIfMissing` 而不是裸 ALTER，理由同 [MIGRATION_5_6]：迁移被重放时不至于炸库。
+ */
+val MIGRATION_7_8: Migration =
+    object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            addColumnIfMissing(db, "txn", "photoPath", "TEXT")
+        }
+    }
+
 /** 全部迁移，供 [AppDatabase] 构建时注册。 */
 val ALL_MIGRATIONS: Array<Migration> =
-    arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+    arrayOf(
+        MIGRATION_1_2,
+        MIGRATION_2_3,
+        MIGRATION_3_4,
+        MIGRATION_4_5,
+        MIGRATION_5_6,
+        MIGRATION_6_7,
+        MIGRATION_7_8,
+    )

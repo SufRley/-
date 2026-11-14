@@ -1,6 +1,7 @@
 package com.xxjz.ledger.feature.reimbursement
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,12 +22,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.MoneyFormatter
+import com.xxjz.ledger.core.designsystem.component.CompactHeader
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 
 /** P26 待报销（AC-59 ~ AC-62）。 */
@@ -62,18 +62,18 @@ fun ReimbursementScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("待报销") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回") }
+    // v1.9.0 第 4 条：去掉 TopAppBar（64dp + 状态栏 inset），换紧凑头，
+    // 与明细 / 报表 / 账户页同一起点，不再出现「这里空一块」。
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().testTag("screen_reimbursement")) {
+            CompactHeader(
+                title = "待报销",
+                leading = {
+                    IconButton(onClick = onBack, modifier = Modifier.testTag("reimburse_back")) {
+                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    }
                 },
             )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).testTag("screen_reimbursement")) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f)) {
                     Text("待报销合计", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -120,6 +120,7 @@ fun ReimbursementScreen(
                 item { Spacer(Modifier.height(24.dp)) }
             }
         }
+        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
 
     confirming?.let { row ->

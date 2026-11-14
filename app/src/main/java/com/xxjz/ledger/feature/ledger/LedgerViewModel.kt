@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.datastore.needsBackupReminder
+import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Template
+import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
@@ -128,6 +130,93 @@ class LedgerViewModel
             viewModelScope.launch {
                 txnRepository.softDelete(id, System.currentTimeMillis())
                 _messages.emit("已移入回收站")
+            }
+        }
+
+        /** 长按菜单「报销」：在「待报销」与普通账目之间来回切（PRD v1.9.0 第 3 条）。 */
+        fun toggleReimbursement(txn: Txn) {
+            viewModelScope.launch {
+                val next = !txn.pendingReimbursement
+                txnRepository.update(
+                    txn.copy(pendingReimbursement = next, updatedAt = System.currentTimeMillis()),
+                )
+                _messages.emit(if (next) "已标记为待报销" else "已取消待报销")
+            }
+        }
+
+        /**
+         * 长按菜单「拆分」：拆成 [parts] 笔独立账目（PRD v1.9.0 第 3 条）。
+         *
+         * 等额均分，除不尽的分落到最后一笔——比「第一笔吃掉余数」更符合直觉，
+         * 因为差额通常来自分币四舍五入，放在末尾不显眼。
+         * 原账目随后进回收站，否则金额会凭空翻倍。
+         */
+        fun splitTxn(
+            txn: Txn,
+            parts: Int,
+        ) {
+            if (parts < 2) return
+            viewModelScope.launch {
+                val now = System.currentTimeMillis()
+                val each = txn.amount / parts
+                val remainder = txn.amount - each * parts
+                repeat(parts) { index ->
+                    val amount = each + if (index == parts - 1) remainder else 0L
+                    if (amount <= 0L) return@repeat
+                    txnRepository.insert(
+                        txn.copy(
+                            id = SeedData.newId("txn"),
+                            amount = amount,
+                            note = "${txn.note}（拆分 ${index + 1}/$parts）".take(200),
+                            createdAt = now,
+                            updatedAt = now,
+                        ),
+                    )
+                }
+                txnRepository.softDelete(txn.id, now)
+                _messages.emit("已拆成 $parts 笔")
+            }
+        }
+
+        /** 长按菜单「更多 → 创建模板记账」：把当前这笔存成模板，下次一键复用。 */
+        fun saveAsTemplate(
+            txn: Txn,
+            name: String,
+        ) {
+            viewModelScope.launch {
+                templateRepository.upsert(
+                    Template(
+                        id = SeedData.newId("tpl"),
+                        name = name.ifBlank { "记账模板" }.take(12),
+                        type = txn.type,
+                        amount = txn.amount,
+                        categoryId = txn.categoryId,
+                        accountId = txn.accountId,
+                        toAccountId = txn.toAccountId,
+                        note = txn.note,
+                    ),
+                )
+                _messages.emit("已保存为模板「$name」")
+            }
+        }
+
+        /** 批量模式：一次删掉选中的多条。 */
+        fun batchDelete(ids: Collection<String>) {
+            if (ids.isEmpty()) return
+            viewModelScope.launch {
+                val now = System.currentTimeMillis()
+                ids.forEach { txnRepository.softDelete(it, now) }
+                _messages.emit("已把 ${ids.size} 笔移入回收站")
+            }
+        }
+
+        /** 批量模式：一次把选中的多条标记为待报销。 */
+        fun batchReimburse(txns: List<Txn>) {
+            if (txns.isEmpty()) return
+            viewModelScope.launch {
+                val now = System.currentTimeMillis()
+                txns.forEach { txnRepository.update(it.copy(pendingReimbursement = true, updatedAt = now)) }
+                _messages.emit("已标记 ${txns.size} 笔为待报销")
             }
         }
     }

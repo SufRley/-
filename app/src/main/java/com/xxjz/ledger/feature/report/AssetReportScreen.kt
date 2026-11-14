@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -57,8 +59,9 @@ import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.core.ui.chart.ChartBox
 import com.xxjz.ledger.core.ui.chart.ChartPoint
 import com.xxjz.ledger.core.ui.chart.EmptyRing
+import com.xxjz.ledger.core.ui.chart.LabeledPieChart
 import com.xxjz.ledger.core.ui.chart.LineChart
-import com.xxjz.ledger.core.ui.chart.PieChart
+import com.xxjz.ledger.core.ui.chart.PieCallout
 import com.xxjz.ledger.core.ui.chart.PieSlice
 import com.xxjz.ledger.core.ui.chart.toArgbLong
 import com.xxjz.ledger.domain.usecase.AssetChange
@@ -401,9 +404,17 @@ private fun BreakdownPie(
             if (pieSlices.isEmpty()) {
                 EmptyRing(modifier = Modifier.size(180.dp))
             } else {
-                PieChart(
+                LabeledPieChart(
                     slices = pieSlices,
-                    modifier = Modifier.size(200.dp),
+                    // 每块都带一条引线连到账户名，省得在饼和图例之间来回对照
+                    callouts =
+                        slices.mapIndexed { index, slice ->
+                            PieCallout(
+                                title = slice.label,
+                                // 副标题只放占比：外侧空间只有 78dp，塞金额会溢出压到饼上
+                                subtitle = "${slice.percent(total)}%",
+                            )
+                        },
                     selected = selected,
                     onSelect = { selected = if (it == selected) -1 else it },
                 ) {
@@ -414,35 +425,41 @@ private fun BreakdownPie(
                             Modifier
                                 .clip(CircleShape)
                                 .clickable(onClick = onToggleCenter)
-                                .padding(8.dp)
+                                .padding(4.dp)
                                 .testTag("${tag}_center"),
                     ) {
                         Text(
                             text = active?.label ?: "合计",
-                            style = MaterialTheme.typography.labelMedium,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
                         )
-                        val value = active?.amount ?: total
-                        Text(
-                            text =
-                                when (center) {
-                                    PieCenter.AMOUNT -> "¥${MoneyFormatter.centsToYuan(value)}"
-                                    PieCenter.PERCENT ->
-                                        if (active == null) {
-                                            "100%"
-                                        } else {
-                                            "${active.percent(total)}%"
-                                        }
-                                },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.testTag("${tag}_center_value"),
-                        )
+                        // 金额两边各加一个箭头：不写「点击切换」，也一眼看得出这里能点
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ChevronHint(direction = -1)
+                            Text(
+                                text =
+                                    when (center) {
+                                        PieCenter.AMOUNT -> "¥${MoneyFormatter.centsToYuan(active?.amount ?: total)}"
+                                        PieCenter.PERCENT ->
+                                            if (active == null) {
+                                                "100%"
+                                            } else {
+                                                "${active.percent(total)}%"
+                                            }
+                                    },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 2.dp).testTag("${tag}_center_value"),
+                            )
+                            ChevronHint(direction = 1)
+                        }
                         if (showToggleHint) {
                             Text(
-                                text = "点击切换",
+                                text = "点我切换",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
                             )
                         }
                     }
@@ -680,3 +697,19 @@ private fun changeSubtitle(change: AssetChange): String =
             change.amountAfter?.let { " · 调整为 ¥${MoneyFormatter.centsToYuan(it)}" } ?: ""
         else -> ""
     }
+
+/**
+ * 圆心两侧的小箭头（PRD v1.9.0 第 1 条）。
+ *
+ * [direction] 为 -1 时指向左、1 时指向右。用图标而不是「◀」字符：
+ * 字符在不同字体下大小不一，图标则与文字基线对得齐。
+ */
+@Composable
+private fun ChevronHint(direction: Int) {
+    Icon(
+        imageVector = if (direction < 0) Icons.Filled.ChevronLeft else Icons.Filled.ChevronRight,
+        contentDescription = null,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+        modifier = Modifier.size(14.dp),
+    )
+}
