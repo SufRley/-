@@ -25,6 +25,10 @@ interface MetaDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(meta: MetaEntity)
+
+    /** 按前缀取全部键值（v1.8.0：资产变化事件以 `asset_event_<ts>_<seq>` 为键批量读取）。 */
+    @Query("SELECT * FROM app_meta WHERE `key` LIKE :prefix || '%' ORDER BY `key` DESC")
+    suspend fun listByPrefix(prefix: String): List<MetaEntity>
 }
 
 /** 账本（多账本预留，v1 只有默认账本）。 */

@@ -50,7 +50,7 @@ class EditorViewModelTest {
                 Category(id = "breakfast", name = "早餐", parentId = "food", type = TxnType.EXPENSE),
                 Category(id = "salary", name = "工资", type = TxnType.INCOME),
             )
-        accountRepo.items["acc-1"] = Account(id = "acc-1", name = "现金", type = AccountType.FUND)
+        accountRepo.items["acc-1"] = Account(id = "acc-1", name = "现金", type = AccountType.SAVINGS)
         coEvery { settings.current() } returns AppSettings()
     }
 

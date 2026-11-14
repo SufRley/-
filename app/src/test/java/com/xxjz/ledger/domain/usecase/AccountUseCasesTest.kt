@@ -21,7 +21,7 @@ class AccountUseCasesTest {
     private fun account(
         id: String,
         balance: Long,
-        type: AccountType = AccountType.FUND,
+        type: AccountType = AccountType.SAVINGS,
         hidden: Boolean = false,
     ) = Account(id = id, name = id, type = type, balance = balance, hidden = hidden)
 

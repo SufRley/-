@@ -32,8 +32,8 @@ class SettingsViewModelTest {
     fun setUp() {
         Dispatchers.setMain(StandardTestDispatcher())
         settings = FakeSettingsDataStore()
-        accountRepo.items["a1"] = Account(id = "a1", name = "现金", type = AccountType.FUND)
-        accountRepo.items["a2"] = Account(id = "a2", name = "工资卡", type = AccountType.FUND)
+        accountRepo.items["a1"] = Account(id = "a1", name = "现金", type = AccountType.SAVINGS)
+        accountRepo.items["a2"] = Account(id = "a2", name = "工资卡", type = AccountType.SAVINGS)
         viewModel = SettingsViewModel(settings, accountRepo)
     }
 

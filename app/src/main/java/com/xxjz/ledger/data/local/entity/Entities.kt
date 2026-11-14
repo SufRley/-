@@ -67,6 +67,12 @@ data class AccountEntity(
     @ColumnInfo(name = "sortOrder") val sortOrder: Int,
     /** 软删除时间，非空表示在回收站（M8）。 */
     @ColumnInfo(name = "deletedAt") val deletedAt: Long? = null,
+    /** 投资账户累计成本（分），v1.8.0 新增，仅 INVEST 使用。 */
+    @ColumnInfo(name = "costCents") val costCents: Long = 0L,
+    /** 投资账户当前市值（分），v1.8.0 新增，仅 INVEST 使用。 */
+    @ColumnInfo(name = "marketValueCents") val marketValueCents: Long = 0L,
+    /** 投资账户市值是否计入净资产，v1.8.0 新增，默认计入。 */
+    @ColumnInfo(name = "includeInNetAssets") val includeInNetAssets: Boolean = true,
 )
 
 @Entity(tableName = "category", indices = [Index("parentId"), Index("type", "sortOrder")])

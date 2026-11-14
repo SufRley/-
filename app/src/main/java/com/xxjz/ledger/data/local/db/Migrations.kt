@@ -67,5 +67,23 @@ val MIGRATION_3_4: Migration =
         }
     }
 
+/**
+ * v4 → v5（v1.8.0 账户五分类）：`account` 增加投资三字段，并把老 `FUND` 全部转成 `SAVINGS`。
+ *
+ * - `costCents` / `marketValueCents` 默认 0，`includeInNetAssets` 默认 1（计入净资产）；
+ * - 老版本只有「资金 / 信用 / 借贷」三类，按 PRD D4，资金账户一律落到储蓄卡，现金由用户自己改回；
+ * - 软删（在回收站）的账户在同一张表里，上面的 UPDATE 天然覆盖，恢复后类型同样正确；
+ * - 老数据没有投资账户，市值默认 0 不会影响净资产口径。
+ */
+val MIGRATION_4_5: Migration =
+    object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `account` ADD COLUMN `costCents` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `account` ADD COLUMN `marketValueCents` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `account` ADD COLUMN `includeInNetAssets` INTEGER NOT NULL DEFAULT 1")
+            db.execSQL("UPDATE `account` SET `type` = 'SAVINGS' WHERE `type` = 'FUND'")
+        }
+    }
+
 /** 全部迁移，供 [AppDatabase] 构建时注册。 */
-val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)

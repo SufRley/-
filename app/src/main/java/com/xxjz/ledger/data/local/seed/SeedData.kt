@@ -57,7 +57,7 @@ object SeedData {
             AccountEntity(
                 id = DEFAULT_ACCOUNT_ID,
                 name = "现金",
-                type = AccountType.FUND.name,
+                type = AccountType.CASH.name,
                 initialBalance = 0,
                 icon = "wallet",
                 color = "#2E7D5B",

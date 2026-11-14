@@ -19,7 +19,7 @@ class WidgetSummaryTest {
         id: String,
         balance: Long,
         hidden: Boolean = false,
-    ) = Account(id = id, name = id, type = AccountType.FUND, balance = balance, hidden = hidden)
+    ) = Account(id = id, name = id, type = AccountType.SAVINGS, balance = balance, hidden = hidden)
 
     @Nested
     @DisplayName("汇总口径")
@@ -27,7 +27,7 @@ class WidgetSummaryTest {
         @Test
         @DisplayName("结余 = 收入 - 支出，支出大于收入时为负")
         fun balance() {
-            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, income = 500_00, expense = 800_00, count = 3), AssetSummary(0, 0))
+            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, income = 500_00, expense = 800_00, count = 3), AssetSummary())
             assertEquals(-300_00, s.balance)
             assertEquals(3, s.count)
             assertFalse(s.isEmpty)
@@ -36,10 +36,10 @@ class WidgetSummaryTest {
         @Test
         @DisplayName("净资产 = 资产 - 负债，与「我的」页同口径")
         fun netAssets() {
-            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(assets = 1_000_00, liabilities = 300_00))
+            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(savings = 1_000_00, overdraft = 300_00))
             assertEquals(700_00, s.netAssets)
             // 负债大于资产时净值为负，符号要一路保留到文案上
-            val negative = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(assets = 100_00, liabilities = 400_00))
+            val negative = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(savings = 100_00, overdraft = 400_00))
             assertEquals(-300_00, negative.netAssets)
             assertEquals("-¥300.00", WidgetFormatter.yuan(negative.netAssets))
         }
@@ -54,7 +54,7 @@ class WidgetSummaryTest {
         @Test
         @DisplayName("一笔没记时判为为空，即使有账户余额")
         fun emptyState() {
-            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(9_999_00, 0))
+            val s = WidgetSummaryBuilder.build(MonthlySummary(202611, 0, 0, 0), AssetSummary(savings = 9_999_00))
             assertTrue(s.isEmpty)
         }
     }

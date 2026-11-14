@@ -345,6 +345,32 @@ class FakeAccountRepository : AccountRepository {
 
     val txnCounts = mutableMapOf<String, Int>()
     val deletedAt = mutableMapOf<String, Long>()
+
+    /** 改市值时记录的事件，供「资产变化记录」相关测试断言。 */
+    val marketValueEvents = mutableListOf<Pair<String, Long>>()
+
+    override suspend fun adjustInvestCost(
+        id: String,
+        deltaCents: Long,
+        at: Long,
+    ) {
+        val current = items[id] ?: return
+        if (current.type != com.xxjz.ledger.domain.model.AccountType.INVEST) return
+        items[id] = current.copy(costCents = (current.costCents + deltaCents).coerceAtLeast(0))
+        version.value += 1
+    }
+
+    override suspend fun updateMarketValue(
+        id: String,
+        marketValueCents: Long,
+        at: Long,
+    ) {
+        val current = items[id] ?: return
+        if (current.type != com.xxjz.ledger.domain.model.AccountType.INVEST) return
+        marketValueEvents += id to marketValueCents
+        items[id] = current.copy(marketValueCents = marketValueCents.coerceAtLeast(0))
+        version.value += 1
+    }
 }
 
 /** 标签仓库的内存实现（M9 管理页用）。 */

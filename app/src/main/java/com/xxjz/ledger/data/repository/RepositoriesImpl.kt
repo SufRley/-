@@ -24,6 +24,8 @@ import com.xxjz.ledger.data.local.entity.TxnTagEntity
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.AssetEvent
+import com.xxjz.ledger.domain.model.AssetEventKind
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetPeriod
 import com.xxjz.ledger.domain.model.BudgetScope
@@ -39,6 +41,7 @@ import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.model.parseAccountType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
@@ -118,7 +121,8 @@ internal fun AccountEntity.toModel(balance: Long = 0): Account =
     Account(
         id = id,
         name = name,
-        type = AccountType.valueOf(type),
+        // v1.8.0：老库/老备份里的 FUND 一律解析为 SAVINGS，未知值兜底 SAVINGS 而非抛异常
+        type = parseAccountType(type),
         initialBalance = initialBalance,
         icon = icon,
         color = color,
@@ -128,6 +132,9 @@ internal fun AccountEntity.toModel(balance: Long = 0): Account =
         hidden = hidden,
         sortOrder = sortOrder,
         balance = balance,
+        costCents = costCents,
+        marketValueCents = marketValueCents,
+        includeInNetAssets = includeInNetAssets,
     )
 
 internal fun Account.toEntity(): AccountEntity =
@@ -143,6 +150,9 @@ internal fun Account.toEntity(): AccountEntity =
         repayDay = repayDay,
         hidden = hidden,
         sortOrder = sortOrder,
+        costCents = costCents,
+        marketValueCents = marketValueCents,
+        includeInNetAssets = includeInNetAssets,
     )
 
 internal fun CategoryEntity.toModel(): Category =
@@ -305,6 +315,7 @@ class TxnRepositoryImpl
     constructor(
         private val dao: TxnDao,
         private val categoryDao: CategoryDao,
+        private val accountRepository: AccountRepository,
     ) : TxnRepository {
         override fun observeInRange(
             start: Long,
@@ -424,21 +435,57 @@ class TxnRepositoryImpl
             return income to expense
         }
 
-        override suspend fun insert(txn: Txn) = dao.insert(txn.toEntity())
+        override suspend fun insert(txn: Txn) {
+            dao.insert(txn.toEntity())
+            // v1.8.0：转入/转出投资账户时自动累加/扣减累计成本（PRD D15「买入=转入、卖出=转出」）
+            adjustInvestCost(txn, sign = 1)
+        }
 
-        override suspend fun update(txn: Txn) = dao.update(txn.toEntity())
+        override suspend fun update(txn: Txn) {
+            // 改金额/改账户时先把旧版本对成本的影响撤销，再按新版本重算，避免成本越改越偏
+            val before = dao.byId(txn.id)?.toModel()
+            dao.update(txn.toEntity())
+            if (before != null) adjustInvestCost(before, sign = -1)
+            adjustInvestCost(txn, sign = 1)
+        }
+
+        /** 投资成本联动：转账进入投资账户 +金额，转出 −金额；其它类型不参与。 */
+        private suspend fun adjustInvestCost(
+            txn: Txn,
+            sign: Int,
+        ) {
+            if (txn.type != TxnType.TRANSFER || txn.deletedAt != null) return
+            // 转入：toAccountId 是投资账户 → 成本增加（资金变资产）
+            txn.toAccountId?.let { accountRepository.adjustInvestCost(it, sign * txn.amount, txn.updatedAt) }
+            // 转出：accountId 是投资账户 → 成本减少
+            txn.accountId?.let { accountRepository.adjustInvestCost(it, -sign * txn.amount, txn.updatedAt) }
+        }
 
         override suspend fun softDelete(
             id: String,
             at: Long,
-        ) = dao.softDelete(id, at)
+        ) {
+            val txn = dao.byId(id)?.toModel()
+            dao.softDelete(id, at)
+            // 删掉一笔投资相关的转账，成本要回退，否则市值/成本口径会永久失真
+            if (txn != null) adjustInvestCost(txn, sign = -1)
+        }
 
         override suspend fun restore(
             id: String,
             at: Long,
-        ) = dao.restore(id, at)
+        ) {
+            val txn = dao.byId(id)?.toModel()
+            dao.restore(id, at)
+            // 回收站还原：只有原本未删除的转账才需要把成本加回去
+            if (txn != null && txn.deletedAt != null) adjustInvestCost(txn.copy(deletedAt = null), sign = 1)
+        }
 
-        override suspend fun hardDelete(id: String) = dao.hardDelete(id)
+        override suspend fun hardDelete(id: String) {
+            val txn = dao.byId(id)?.toModel()
+            dao.hardDelete(id)
+            if (txn != null) adjustInvestCost(txn, sign = -1)
+        }
 
         override suspend fun setExcluded(
             id: String,
@@ -463,6 +510,7 @@ class AccountRepositoryImpl
     constructor(
         private val db: com.xxjz.ledger.data.local.db.AppDatabase,
         private val dao: AccountDao,
+        private val assetEvents: AssetEventStore,
     ) : AccountRepository {
         private val txnDao get() = db.txnDao()
 
@@ -526,6 +574,47 @@ class AccountRepositoryImpl
         ) = dao.setSortOrder(id, order)
 
         override suspend fun txnCount(id: String): Int = txnDao.countByAccount(id)
+
+        override suspend fun adjustInvestCost(
+            id: String,
+            deltaCents: Long,
+            at: Long,
+        ) {
+            if (deltaCents == 0L) return
+            val entity = dao.byId(id) ?: return
+            // 非投资账户没有成本概念，直接跳过，省得调用点到处 if (type == INVEST)
+            if (entity.type != AccountType.INVEST.name) return
+            val next = (entity.costCents + deltaCents).coerceAtLeast(0L)
+            dao.update(entity.copy(costCents = next))
+        }
+
+        override suspend fun updateMarketValue(
+            id: String,
+            marketValueCents: Long,
+            at: Long,
+        ) {
+            val entity = dao.byId(id) ?: return
+            if (entity.type != AccountType.INVEST.name) return
+            val next = marketValueCents.coerceAtLeast(0L)
+            val delta = next - entity.marketValueCents
+            db.withTransaction {
+                dao.update(entity.copy(marketValueCents = next))
+                // 改市值不改流水，只在计入净资产时才算净资产变化，写一条事件供报表展示
+                if (delta != 0L && entity.includeInNetAssets) {
+                    assetEvents.record(
+                        AssetEvent(
+                            id = "mv_${id}_$at",
+                            at = at,
+                            kind = AssetEventKind.MARKET_VALUE,
+                            accountId = id,
+                            accountName = entity.name,
+                            // PRD D14：记录里显示「调整到的市值」，不是差额；差额由前后市值推得
+                            deltaCents = next,
+                        ),
+                    )
+                }
+            }
+        }
     }
 
 @Singleton

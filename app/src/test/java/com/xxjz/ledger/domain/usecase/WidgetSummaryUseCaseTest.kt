@@ -97,7 +97,7 @@ class WidgetSummaryUseCaseTest {
     @DisplayName("净资产来自账户余额，信用卡欠款体现为负债")
     fun netAssets() =
         runTest {
-            accountRepo.upsert(Account(id = "cash", name = "现金", type = AccountType.FUND, balance = 2_000_00))
+            accountRepo.upsert(Account(id = "cash", name = "现金", type = AccountType.SAVINGS, balance = 2_000_00))
             accountRepo.upsert(Account(id = "card", name = "信用卡", type = AccountType.CREDIT, balance = -800_00))
 
             assertEquals(1_200_00, useCase(thisMonth).netAssets)

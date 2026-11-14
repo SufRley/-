@@ -46,7 +46,7 @@ class CsvExportViewModelTest {
                 Category(id = "food", name = "餐饮", type = TxnType.EXPENSE),
                 Category(id = "lunch", name = "午餐", parentId = "food", type = TxnType.EXPENSE),
             )
-        accountRepo.items["a1"] = Account(id = "a1", name = "现金", type = AccountType.FUND)
+        accountRepo.items["a1"] = Account(id = "a1", name = "现金", type = AccountType.SAVINGS)
         viewModel = CsvExportViewModel(txnRepo, categoryRepo, accountRepo, io)
         viewModel.ioDispatcher = UnconfinedTestDispatcher()
     }

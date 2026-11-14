@@ -11,6 +11,7 @@ import com.xxjz.ledger.data.local.entity.TagEntity
 import com.xxjz.ledger.data.local.entity.TemplateEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
+import com.xxjz.ledger.domain.model.parseAccountType
 
 /**
  * 实体 ↔ 备份 DTO 的双向映射。
@@ -89,13 +90,17 @@ internal fun AccountEntity.toDto(): AccountDto =
         hidden = hidden,
         sortOrder = sortOrder,
         deletedAt = deletedAt,
+        costCents = costCents,
+        marketValueCents = marketValueCents,
+        includeInNetAssets = includeInNetAssets,
     )
 
 internal fun AccountDto.toEntity(): AccountEntity =
     AccountEntity(
         id = id,
         name = name,
-        type = type,
+        // v1.8.0：老备份里的 FUND（≤ v1.7.0 的唯一资金类）一律落成 SAVINGS，未知值同样兜底为 SAVINGS。
+        type = parseAccountType(type).name,
         initialBalance = initialBalance,
         icon = icon,
         color = color,
@@ -105,6 +110,9 @@ internal fun AccountDto.toEntity(): AccountEntity =
         hidden = hidden,
         sortOrder = sortOrder,
         deletedAt = deletedAt,
+        costCents = costCents,
+        marketValueCents = marketValueCents,
+        includeInNetAssets = includeInNetAssets,
     )
 
 internal fun CategoryEntity.toDto(): CategoryDto =

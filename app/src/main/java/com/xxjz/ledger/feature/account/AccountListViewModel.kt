@@ -30,7 +30,7 @@ data class AccountGroup(
 
 /** P13 账户列表状态。 */
 data class AccountListUiState(
-    val summary: AssetSummary = AssetSummary(0, 0),
+    val summary: AssetSummary = AssetSummary(),
     val groups: List<AccountGroup> = emptyList(),
     val hidden: List<Account> = emptyList(),
     val showHidden: Boolean = false,
@@ -55,9 +55,11 @@ class AccountListViewModel
                 val visible = accounts.filter { !it.hidden }
                 val groups =
                     listOf(
-                        AccountType.FUND to "资金账户",
+                        AccountType.CASH to "现金",
+                        AccountType.SAVINGS to "储蓄卡",
                         AccountType.CREDIT to "信用账户",
                         AccountType.DEBT to "借贷账户",
+                        AccountType.INVEST to "投资",
                     ).mapNotNull { (type, title) ->
                         val inGroup = visible.filter { it.type == type }
                         if (inGroup.isEmpty()) null else AccountGroup(type, title, inGroup)

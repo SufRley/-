@@ -172,6 +172,28 @@ interface AccountRepository {
 
     /** 该账户的账目笔数。 */
     suspend fun txnCount(id: String): Int
+
+    /**
+     * 投资账户累计成本增减（v1.8.0）：转入为正、转出为负，成本下限 0。
+     *
+     * 只影响 INVEST 账户；非投资账户调用是空操作，避免调用点到处判断类型。
+     */
+    suspend fun adjustInvestCost(
+        id: String,
+        deltaCents: Long,
+        at: Long,
+    )
+
+    /**
+     * 修改投资账户市值（v1.8.0）：只改 [Account.marketValueCents]，**不生成流水**（PRD D15）。
+     *
+     * 同时写一条资产变化事件，供资产报表「资产变化记录」板块展示。
+     */
+    suspend fun updateMarketValue(
+        id: String,
+        marketValueCents: Long,
+        at: Long,
+    )
 }
 
 /** 分类仓库。 */

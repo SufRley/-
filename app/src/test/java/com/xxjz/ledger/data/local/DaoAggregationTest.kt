@@ -91,7 +91,7 @@ class DaoAggregationTest {
     ) = AccountEntity(
         id = id,
         name = id,
-        type = AccountType.FUND.name,
+        type = AccountType.SAVINGS.name,
         initialBalance = initial,
         icon = "",
         color = "",

@@ -16,7 +16,7 @@ import javax.inject.Inject
 
 /** P12「我的」页状态：资产卡片数据。 */
 data class MineUiState(
-    val summary: AssetSummary = AssetSummary(0, 0),
+    val summary: AssetSummary = AssetSummary(),
     val accountCount: Int = 0,
     /** 收支配色反转（AC-41）。 */
     val amountColorsReversed: Boolean = false,

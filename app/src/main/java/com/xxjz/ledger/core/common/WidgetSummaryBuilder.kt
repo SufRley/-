@@ -3,6 +3,7 @@ package com.xxjz.ledger.core.common
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.MonthlySummary
 import com.xxjz.ledger.domain.usecase.AssetSummary
+import com.xxjz.ledger.domain.usecase.NetAssetsCalculator
 
 /**
  * 把仓库层的两份聚合结果折成小组件要的那几个数。
@@ -24,6 +25,6 @@ object WidgetSummaryBuilder {
             count = count,
         )
 
-    /** 账户列表 → 净资产（与 `GetAssetSummaryUseCase` 同口径，隐藏账户不计）。 */
-    fun netAssetsOf(accounts: List<Account>): Long = accounts.filter { !it.hidden }.sumOf { it.balance }
+    /** 账户列表 → 净资产（v1.8.0：复用纯计算器，与账户页完全同口径）。 */
+    fun netAssetsOf(accounts: List<Account>): Long = NetAssetsCalculator.net(accounts)
 }

@@ -99,7 +99,7 @@ class TrashViewModelTest {
         runTest {
             txnRepo.put(txn("t1", deletedAt = 1_700_000_100_000, note = "打车"))
             txnRepo.items["t2"] = txn("t2") // 没删，不该出现
-            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.FUND))
+            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.SAVINGS))
             accountRepo.markDeleted("a1", 1_700_000_200_000)
             budgetRepo.put(
                 Budget(
@@ -152,7 +152,7 @@ class TrashViewModelTest {
         runTest {
             // 还原账户会把同一次删除的流水一起捞回来，所以回收站里先放一条
             txnRepo.put(txn("t1", deletedAt = 1_700_000_200_000))
-            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.FUND))
+            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.SAVINGS))
             accountRepo.markDeleted("a1", 1_700_000_200_000)
             waitVmState { it.accounts.isNotEmpty() }
 
@@ -199,7 +199,7 @@ class TrashViewModelTest {
         runTest {
             viewModel.selectTab(TrashTab.TXN)
             txnRepo.put(txn("t1", deletedAt = 1_700_000_100_000))
-            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.FUND))
+            accountRepo.upsert(Account(id = "a1", name = "现金", type = AccountType.SAVINGS))
             accountRepo.markDeleted("a1", 1_700_000_200_000)
             waitVmState { it.txns.size == 1 }
 

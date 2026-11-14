@@ -30,8 +30,8 @@ class OnboardingViewModelTest {
     fun setUp() {
         Dispatchers.setMain(StandardTestDispatcher())
         settings = FakeSettingsDataStore()
-        accountRepo.items["cash"] = Account(id = "cash", name = "现金", type = AccountType.FUND)
-        accountRepo.items["card"] = Account(id = "card", name = "工资卡", type = AccountType.FUND)
+        accountRepo.items["cash"] = Account(id = "cash", name = "现金", type = AccountType.SAVINGS)
+        accountRepo.items["card"] = Account(id = "card", name = "工资卡", type = AccountType.SAVINGS)
         viewModel = OnboardingViewModel(settings, accountRepo)
     }
 

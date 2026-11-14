@@ -72,7 +72,19 @@ data class Account(
     val sortOrder: Int = 0,
     /** 账户余额（分），由聚合查询填充。 */
     val balance: Long = 0,
-)
+    /** 投资账户累计成本（分），由转入/转出流水累加，仅 INVEST 使用。 */
+    val costCents: Long = 0,
+    /** 投资账户当前市值（分），用户手动维护，仅 INVEST 使用。 */
+    val marketValueCents: Long = 0,
+    /** 投资账户市值是否计入净资产，默认计入。 */
+    val includeInNetAssets: Boolean = true,
+) {
+    /** 投资盈亏（分）= 市值 − 累计成本；非投资账户恒为 0。 */
+    val profitCents: Long get() = if (type == AccountType.INVEST) marketValueCents - costCents else 0
+
+    /** 投资盈亏率（0..1 的小数），成本为 0 时返回 0 避免除零。 */
+    val profitRate: Double get() = if (costCents > 0) profitCents.toDouble() / costCents else 0.0
+}
 
 /** 分类。[parentId] 为空表示大类。 */
 data class Category(

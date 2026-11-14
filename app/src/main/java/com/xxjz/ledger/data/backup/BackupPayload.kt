@@ -119,6 +119,12 @@ data class AccountDto(
     val hidden: Boolean = false,
     val sortOrder: Int = 0,
     val deletedAt: Long? = null,
+    /** 投资累计成本（分），v1.8.0 新增；老备份无此字段时为 0。 */
+    val costCents: Long = 0,
+    /** 投资当前市值（分），v1.8.0 新增；老备份无此字段时为 0。 */
+    val marketValueCents: Long = 0,
+    /** 投资市值是否计入净资产，v1.8.0 新增；老备份无此字段时默认计入。 */
+    val includeInNetAssets: Boolean = true,
 )
 
 @Serializable

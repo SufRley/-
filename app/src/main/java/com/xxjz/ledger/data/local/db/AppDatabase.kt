@@ -29,7 +29,7 @@ import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
 
 /**
- * 应用数据库，version 4（v2 预算表、v3 借贷坏账、v4 账户软删，见 [ALL_MIGRATIONS]）。
+ * 应用数据库，version 5（v2 预算表、v3 借贷坏账、v4 账户软删、v5 账户五分类与投资字段，见 [ALL_MIGRATIONS]）。
  *
  * - `exportSchema = true`：schema 快照随仓库走（`app/schemas`），便于后续迁移评审。
  * - WAL：在 `DatabaseModule` 建库时通过 `JournalMode.WRITE_AHEAD_LOGGING` 开启。
@@ -80,7 +80,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** 当前 schema 版本；备份与导入的兼容性判断都读这里。 */
-        const val SCHEMA_VERSION = 4
+        const val SCHEMA_VERSION = 5
 
         const val NAME = "xxjz.db"
         const val SEED_VERSION = 1

@@ -35,6 +35,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -56,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.core.designsystem.component.ConfirmDialog
 import com.xxjz.ledger.core.designsystem.component.EmptyState
+import com.xxjz.ledger.core.designsystem.theme.profitColor
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
@@ -306,9 +308,11 @@ private fun AccountRow(
 
 private fun typeLabel(type: AccountType): String =
     when (type) {
-        AccountType.FUND -> "资金"
+        AccountType.CASH -> "现金"
+        AccountType.SAVINGS -> "储蓄卡"
         AccountType.CREDIT -> "信用"
         AccountType.DEBT -> "借贷"
+        AccountType.INVEST -> "投资"
     }
 
 /** P15 账户编辑：按类型驱动表单，信用类才显示额度与账单/还款日（AC-17）。 */
@@ -319,7 +323,7 @@ private fun AccountEditDialog(
     onSave: (Account) -> Unit,
 ) {
     var name by remember { mutableStateOf(account?.name.orEmpty()) }
-    var type by remember { mutableStateOf(account?.type ?: AccountType.FUND) }
+    var type by remember { mutableStateOf(account?.type ?: AccountType.CASH) }
     var balance by remember {
         mutableStateOf(account?.let { MoneyFormatter.centsToPlain(it.initialBalance) } ?: "0")
     }
@@ -327,6 +331,14 @@ private fun AccountEditDialog(
     var billDay by remember { mutableStateOf(account?.billDay?.toString().orEmpty()) }
     var repayDay by remember { mutableStateOf(account?.repayDay?.toString().orEmpty()) }
     var color by remember { mutableStateOf(account?.color ?: "#2E7D5B") }
+    // v1.8.0 投资账户专有：累计成本、当前市值、是否计入净资产（PRD F2）
+    var cost by remember {
+        mutableStateOf(account?.let { MoneyFormatter.centsToPlain(it.costCents) } ?: "0")
+    }
+    var marketValue by remember {
+        mutableStateOf(account?.let { MoneyFormatter.centsToPlain(it.marketValueCents) } ?: "0")
+    }
+    var includeInNetAssets by remember { mutableStateOf(account?.includeInNetAssets ?: true) }
     val initialCents = MoneyFormatter.yuanToCents(balance) ?: 0L
 
     AlertDialog(
@@ -388,6 +400,44 @@ private fun AccountEditDialog(
                         )
                     }
                 }
+                if (type == AccountType.INVEST) {
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = cost,
+                            onValueChange = { cost = it.filter { c -> c.isDigit() || c == '.' }.take(14) },
+                            label = { Text("累计成本") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f).testTag("account_cost"),
+                        )
+                        OutlinedTextField(
+                            value = marketValue,
+                            onValueChange = { marketValue = it.filter { c -> c.isDigit() || c == '.' }.take(14) },
+                            label = { Text("当前市值") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f).testTag("account_market"),
+                        )
+                    }
+                    val costCents = MoneyFormatter.yuanToCents(cost) ?: 0L
+                    val marketCents = MoneyFormatter.yuanToCents(marketValue) ?: 0L
+                    Text(
+                        "盈亏 ${MoneyFormatter.centsToYuan(marketCents - costCents, showSymbol = true)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = profitColor(marketCents - costCents),
+                        modifier = Modifier.padding(top = 4.dp).testTag("account_profit_preview"),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("计入净资产", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = includeInNetAssets,
+                            onCheckedChange = { includeInNetAssets = it },
+                            modifier = Modifier.testTag("account_include_switch"),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(10.dp))
                 Text("颜色", style = MaterialTheme.typography.labelMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 6.dp)) {
@@ -425,6 +475,9 @@ private fun AccountEditDialog(
                             hidden = account?.hidden ?: false,
                             sortOrder = account?.sortOrder ?: 99,
                             balance = account?.balance ?: 0,
+                            costCents = if (type == AccountType.INVEST) MoneyFormatter.yuanToCents(cost) ?: 0L else 0L,
+                            marketValueCents = if (type == AccountType.INVEST) MoneyFormatter.yuanToCents(marketValue) ?: 0L else 0L,
+                            includeInNetAssets = includeInNetAssets,
                         ),
                     )
                 },
