@@ -66,6 +66,19 @@ class FakeSettingsDataStore(
 
     override suspend fun setLastTxnType(type: TxnType) = edit { it.copy(lastTxnType = type) }
 
+    override suspend fun setLastCategory(
+        type: TxnType,
+        categoryId: String?,
+    ) = edit {
+        when (type) {
+            TxnType.EXPENSE -> it.copy(lastExpenseCategoryId = categoryId?.takeIf { c -> c.isNotBlank() })
+            TxnType.INCOME -> it.copy(lastIncomeCategoryId = categoryId?.takeIf { c -> c.isNotBlank() })
+            TxnType.TRANSFER, TxnType.DEBT -> it
+        }
+    }
+
+    override suspend fun setLastPayAccount(id: String?) = edit { it.copy(lastPayAccountId = id?.takeIf { i -> i.isNotBlank() }) }
+
     override suspend fun setBackupReminder(enabled: Boolean) = edit { it.copy(backupReminderEnabled = enabled) }
 
     override suspend fun markBackedUp(at: Long) = edit { it.copy(lastBackupAt = at) }

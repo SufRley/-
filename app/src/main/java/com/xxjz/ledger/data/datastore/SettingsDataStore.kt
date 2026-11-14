@@ -60,6 +60,20 @@ interface SettingsRepository {
 
     suspend fun setLastTxnType(type: TxnType)
 
+    /**
+     * 记住某类型下最后一次用的分类（v1.9.3 第 2 条）。
+     *
+     * 支出与收入分开存：两者分类互不通用，共用一个槽位会让「切到收入」时
+     * 拿上一个支出分类去匹配，结果永远是空的。
+     */
+    suspend fun setLastCategory(
+        type: TxnType,
+        categoryId: String?,
+    )
+
+    /** 记住最后一次实际用的付款账户（v1.9.3 第 2 条）。 */
+    suspend fun setLastPayAccount(id: String?)
+
     suspend fun setBackupReminder(enabled: Boolean)
 
     suspend fun markBackedUp(at: Long)
@@ -128,6 +142,9 @@ class SettingsDataStore
                     backupReminderEnabled = p[KEY_BACKUP_REMINDER] ?: true,
                     lastTxnType =
                         p[KEY_LAST_TYPE]?.let { runCatching { TxnType.valueOf(it) }.getOrNull() } ?: TxnType.EXPENSE,
+                    lastExpenseCategoryId = p[KEY_LAST_EXPENSE_CATEGORY],
+                    lastIncomeCategoryId = p[KEY_LAST_INCOME_CATEGORY],
+                    lastPayAccountId = p[KEY_LAST_PAY_ACCOUNT],
                     savingGoalCents = p[KEY_SAVING_GOAL] ?: 0L,
                     lastBackupAt = p[KEY_LAST_BACKUP] ?: 0L,
                     dailyReminderEnabled = p[KEY_DAILY_REMINDER] ?: false,
@@ -189,6 +206,24 @@ class SettingsDataStore
 
         override suspend fun setLastTxnType(type: TxnType) {
             store.edit { it[KEY_LAST_TYPE] = type.name }
+        }
+
+        override suspend fun setLastCategory(
+            type: TxnType,
+            categoryId: String?,
+        ) {
+            val key =
+                when (type) {
+                    TxnType.EXPENSE -> KEY_LAST_EXPENSE_CATEGORY
+                    TxnType.INCOME -> KEY_LAST_INCOME_CATEGORY
+                    // 转账与借贷不选分类，写进去只会污染下次支出/收入的预选
+                    TxnType.TRANSFER, TxnType.DEBT -> return
+                }
+            store.edit { it[key] = categoryId ?: "" }
+        }
+
+        override suspend fun setLastPayAccount(id: String?) {
+            store.edit { it[KEY_LAST_PAY_ACCOUNT] = id ?: "" }
         }
 
         /** 每周备份提醒开关（M8-T8）。 */
@@ -307,6 +342,9 @@ class SettingsDataStore
             val KEY_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
             val KEY_BACKUP_REMINDER = booleanPreferencesKey("backup_reminder")
             val KEY_LAST_TYPE = stringPreferencesKey("last_txn_type")
+            val KEY_LAST_EXPENSE_CATEGORY = stringPreferencesKey("last_expense_category")
+            val KEY_LAST_INCOME_CATEGORY = stringPreferencesKey("last_income_category")
+            val KEY_LAST_PAY_ACCOUNT = stringPreferencesKey("last_pay_account")
             val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
             val KEY_SAVING_GOAL = longPreferencesKey("saving_goal_cents")
             val KEY_LAST_BACKUP = longPreferencesKey("last_backup_at")
@@ -337,6 +375,12 @@ data class AppSettings(
     val biometricEnabled: Boolean = false,
     val backupReminderEnabled: Boolean = true,
     val lastTxnType: TxnType = TxnType.EXPENSE,
+    /** 上次保存支出时用的分类（v1.9.3 第 2 条）。 */
+    val lastExpenseCategoryId: String? = null,
+    /** 上次保存收入时用的分类（v1.9.3 第 2 条）。 */
+    val lastIncomeCategoryId: String? = null,
+    /** 上次保存时实际用的付款账户（v1.9.3 第 2 条），优先于 [defaultAccountId]。 */
+    val lastPayAccountId: String? = null,
     /** 结余目标（分），0 表示未设置。 */
     val savingGoalCents: Long = 0,
     /** 最近一次导出备份的时间，0 表示从没备份过。 */

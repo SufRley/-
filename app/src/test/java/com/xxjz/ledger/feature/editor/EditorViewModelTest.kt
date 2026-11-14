@@ -2,7 +2,6 @@ package com.xxjz.ledger.feature.editor
 
 import app.cash.turbine.test
 import com.xxjz.ledger.data.datastore.AppSettings
-import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
@@ -14,11 +13,10 @@ import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
+import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTagRepository
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
-import io.mockk.coEvery
-import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -45,7 +43,7 @@ class EditorViewModelTest {
     private val accountRepo = FakeAccountRepository()
     private val templateRepo = FakeTemplateRepository()
     private val tagRepo = FakeTagRepository()
-    private val settings = mockk<SettingsDataStore>(relaxed = true)
+    private val settings = FakeSettingsDataStore()
 
     @BeforeEach
     fun setUp() {
@@ -57,7 +55,6 @@ class EditorViewModelTest {
                 Category(id = "salary", name = "工资", type = TxnType.INCOME),
             )
         accountRepo.items["acc-1"] = Account(id = "acc-1", name = "现金", type = AccountType.SAVINGS)
-        coEvery { settings.current() } returns AppSettings()
     }
 
     @AfterEach
@@ -121,8 +118,10 @@ class EditorViewModelTest {
         }
 
     @Test
-    fun `缺少分类时提示并不写库`() =
+    fun `该类型下一个分类都没有时提示并不写库`() =
         runTest(dispatcher.scheduler) {
+            // v1.9.3 起新建会自动预选分类，只有「确实没有分类可选」才会落到这个分支
+            categoryRepo.categories = emptyList()
             val vm = viewModel()
             advanceUntilIdle()
             vm.digit('5')
@@ -147,14 +146,30 @@ class EditorViewModelTest {
         }
 
     @Test
-    fun `切换类型会清空已选分类`() =
+    fun `切换类型会换成新类型的分类，不残留支出分类`() =
         runTest(dispatcher.scheduler) {
             val vm = viewModel()
             advanceUntilIdle()
             vm.selectCategory("breakfast")
             vm.setType(TxnType.INCOME)
-            assertNull(vm.state.value.categoryId)
+
             assertEquals(TxnType.INCOME, vm.state.value.type)
+            // 收入只有一个「工资」，切过去应预选它，且绝不能还是「早餐」
+            assertEquals("salary", vm.state.value.categoryId)
+        }
+
+    @Test
+    fun `切走再切回能恢复刚才选的分类`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+
+            vm.setType(TxnType.TRANSFER)
+            assertNull(vm.state.value.categoryId)
+
+            vm.setType(TxnType.EXPENSE)
+            assertEquals("breakfast", vm.state.value.categoryId)
         }
 
     @Test
@@ -431,5 +446,171 @@ class EditorViewModelTest {
             val alive = txnRepo.items.values.filter { it.deletedAt == null }
             assertFalse(alive.any { it.id == original.id }, "原流水应被软删除")
             assertEquals(2, alive.size)
+        }
+
+    // ---------- v1.9.3 第 2 条：新建时的分类与账户记忆 ----------
+
+    @Test
+    fun `新建时按上次用的分类预选`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastExpenseCategoryId = "breakfast"))
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("breakfast", vm.state.value.categoryId)
+            assertFalse(vm.state.value.dirty)
+        }
+
+    @Test
+    fun `记忆的分类已失效时退到该类型最高频的分类`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastExpenseCategoryId = "已经删掉的分类"))
+            categoryRepo.categories =
+                listOf(
+                    Category(id = "a", name = "A", type = TxnType.EXPENSE, sortOrder = 1, usageCount = 0),
+                    Category(id = "b", name = "B", type = TxnType.EXPENSE, sortOrder = 2, usageCount = 9),
+                    Category(id = "c", name = "C", type = TxnType.EXPENSE, sortOrder = 3, usageCount = 0),
+                )
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("b", vm.state.value.categoryId)
+        }
+
+    @Test
+    fun `收入不会被支出分类的记忆污染`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(
+                AppSettings(lastExpenseCategoryId = "breakfast", lastIncomeCategoryId = "salary"),
+            )
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            vm.setType(TxnType.INCOME)
+            assertEquals("salary", vm.state.value.categoryId)
+
+            vm.setType(TxnType.EXPENSE)
+            assertEquals("breakfast", vm.state.value.categoryId)
+        }
+
+    @Test
+    fun `账户优先用上次实际用的那个，而不是设置里的默认账户`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            settings.replaceAll(AppSettings(lastPayAccountId = "acc-2", defaultAccountId = "acc-1"))
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("acc-2", vm.state.value.accountId)
+        }
+
+    @Test
+    fun `上次用的账户已被删除时回退到默认账户`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            settings.replaceAll(AppSettings(lastPayAccountId = "已删除", defaultAccountId = "acc-2"))
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("acc-2", vm.state.value.accountId)
+        }
+
+    @Test
+    fun `只有一个资金账户时自动预选它`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("acc-1", vm.state.value.accountId)
+        }
+
+    @Test
+    fun `多个账户且没有任何记忆时不预选，避免猜错`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.accountId)
+        }
+
+    @Test
+    fun `借贷账户不会被当成付款账户预选`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items.clear()
+            accountRepo.items["debt-1"] = Account(id = "debt-1", name = "张三", type = AccountType.DEBT)
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.accountId)
+        }
+
+    @Test
+    fun `新建保存后记住分类与账户`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals("breakfast", settings.value.lastExpenseCategoryId)
+            assertEquals("acc-1", settings.value.lastPayAccountId)
+            assertEquals(TxnType.EXPENSE, settings.value.lastTxnType)
+        }
+
+    @Test
+    fun `编辑保存不覆盖记忆`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val saved = txnRepo.items.values.first()
+
+            settings.replaceAll(settings.value.copy(lastExpenseCategoryId = "food"))
+            val editor = viewModel()
+            editor.loadForEdit(saved.id)
+            editor.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals("food", settings.value.lastExpenseCategoryId)
+        }
+
+    @Test
+    fun `编辑打开时以原账目的分类为准，不吃记忆`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val saved = txnRepo.items.values.first()
+
+            settings.replaceAll(AppSettings(lastExpenseCategoryId = "food"))
+            val editor = viewModel()
+            editor.loadForEdit(saved.id)
+
+            assertEquals("breakfast", editor.state.value.categoryId)
+        }
+
+    @Test
+    fun `组合支付记住出钱最多的那个账户`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.setSplitMode(true)
+            vm.setSplitAmount("acc-1", "30")
+            vm.setSplitAmount("acc-2", "50")
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            assertEquals("acc-2", settings.value.lastPayAccountId)
         }
 }

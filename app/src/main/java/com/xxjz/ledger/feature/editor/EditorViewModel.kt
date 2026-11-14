@@ -144,6 +144,21 @@ data class EditorUiState(
         get() = calc.display
 }
 
+/** 从设置里读回来的「上次用的」，新建时按它预选（v1.9.3 第 2 条）。 */
+private data class EditorMemory(
+    val expenseCategoryId: String? = null,
+    val incomeCategoryId: String? = null,
+    val payAccountId: String? = null,
+    val defaultAccountId: String? = null,
+) {
+    fun categoryOf(type: TxnType): String? =
+        when (type) {
+            TxnType.EXPENSE -> expenseCategoryId
+            TxnType.INCOME -> incomeCategoryId
+            TxnType.TRANSFER, TxnType.DEBT -> null
+        }
+}
+
 /**
  * 记账面板 ViewModel：新建 / 编辑共用，靠 [loadForEdit] 区分。
  */
@@ -167,11 +182,117 @@ class EditorViewModel
         private val _events = MutableSharedFlow<EditorEvent>(extraBufferCapacity = 4)
         val events: SharedFlow<EditorEvent> = _events.asSharedFlow()
 
+        /** 上次保存时用的值（v1.9.3 第 2 条），新建时用来预选。 */
+        private var memory: EditorMemory? = null
+
+        /**
+         * 本次页面生命周期内选过的分类，按类型分开记。
+         *
+         * 它比 [memory] 优先：用户刚在支出里点过「买菜」，切到收入再切回来，
+         * 期望看到的是「买菜」，而不是三天前存的「晚餐」。
+         */
+        private val sessionPicks = mutableMapOf<TxnType, String?>()
+
+        /** 本次页面内选过的付款账户，优先级高于持久化记忆。 */
+        private var sessionAccountId: String? = null
+
         init {
             observeCategories()
             observeAccounts()
             observeTags()
-            applyDefaultTime()
+            loadPreferences()
+        }
+
+        /**
+         * 读一次设置：默认时间 + 记忆的分类/账户。
+         *
+         * 合并成一次 `settings.current()` 调用，别为了两个用途读两遍 DataStore。
+         */
+        private fun loadPreferences() {
+            viewModelScope.launch {
+                val snapshot = runCatching { settings.current() }.getOrNull() ?: return@launch
+                memory =
+                    EditorMemory(
+                        expenseCategoryId = snapshot.lastExpenseCategoryId,
+                        incomeCategoryId = snapshot.lastIncomeCategoryId,
+                        payAccountId = snapshot.lastPayAccountId,
+                        defaultAccountId = snapshot.defaultAccountId,
+                    )
+                if (snapshot.defaultTimeMode == DefaultTimeMode.FIXED) {
+                    val minutes = snapshot.fixedTimeMinutes
+                    val time = LocalTime.of(minutes / 60 % 24, minutes % 60)
+                    _state.update { it.copy(dateTime = DateUtils.toMillis(DateUtils.today(), time)) }
+                }
+                applyMemory()
+            }
+        }
+
+        /**
+         * 把记忆套到「还没被用户动过」的字段上。
+         *
+         * 分类和账户是两条独立的 Flow，谁先到都得试一次，所以这个方法会被调用多次；
+         * 它只填空值，绝不覆盖用户已经选好的东西，也不覆盖编辑模式带进来的原值。
+         */
+        private fun applyMemory() {
+            val m = memory ?: return
+            _state.update { s ->
+                if (s.editingId != null) return@update s
+                s.copy(
+                    categoryId = s.categoryId ?: preferredCategory(s.categories, s.type),
+                    accountId = s.accountId ?: preferredAccount(s.accounts, m),
+                )
+            }
+        }
+
+        /**
+         * 分类优先级：本次会话选过的 → 持久化记忆 → 该类型里用得最多的。
+         *
+         * 最后那级兜底是为了「从没记过账的新用户」也有个合理默认，而不是空白。
+         */
+        private fun preferredCategory(
+            categories: List<Category>,
+            type: TxnType,
+        ): String? {
+            if (type != TxnType.EXPENSE && type != TxnType.INCOME) return null
+            val candidates = categories.filter { it.type == type && !it.hidden }
+            if (candidates.isEmpty()) return null
+            val remembered = sessionPicks[type] ?: memory?.categoryOf(type)
+            return candidates.firstOrNull { it.id == remembered }?.id
+                ?: candidates
+                    .sortedWith(compareByDescending<Category> { it.usageCount }.thenBy { it.sortOrder })
+                    .first()
+                    .id
+        }
+
+        /** 账户优先级：本次会话选过的 → 上次实际用的 → 设置里的默认账户 → 唯一资金账户。 */
+        private fun preferredAccount(
+            accounts: List<Account>,
+            m: EditorMemory,
+        ): String? {
+            val funds = accounts.filter { it.type != AccountType.DEBT }
+            if (funds.isEmpty()) return null
+            val remembered = sessionAccountId ?: m.payAccountId
+            return funds.firstOrNull { it.id == remembered }?.id
+                ?: funds.firstOrNull { it.id == m.defaultAccountId }?.id
+                ?: funds.singleOrNull()?.id
+        }
+
+        /**
+         * 保存成功后记住这次的选择。
+         *
+         * 只在新建时写：老账目的分类不代表用户当前习惯，写进去等于用历史污染记忆。
+         * 组合支付记「出钱最多的那个」账户，那才是下次真正会用的。
+         */
+        private suspend fun rememberSelection(s: EditorUiState) {
+            runCatching { settings.setLastTxnType(s.type) }
+            if (s.editingId != null) return
+            runCatching {
+                if (s.type == TxnType.EXPENSE || s.type == TxnType.INCOME) {
+                    settings.setLastCategory(s.type, s.categoryId)
+                }
+                val payer = if (s.splitMode) s.splits.maxByOrNull { it.value }?.key else s.accountId
+                payer?.let { settings.setLastPayAccount(it) }
+            }
         }
 
         private fun observeTags() {
@@ -182,35 +303,23 @@ class EditorViewModel
 
         private fun observeCategories() {
             viewModelScope.launch {
-                categoryRepository.observeAll().collect { list -> _state.update { it.copy(categories = list) } }
+                categoryRepository.observeAll().collect { list ->
+                    _state.update { it.copy(categories = list) }
+                    // 分类可能比账户先到，两边都要试着套一次记忆
+                    applyMemory()
+                }
             }
         }
 
         private fun observeAccounts() {
             viewModelScope.launch {
                 accountRepository.observeWithBalances().collect { list ->
-                    _state.update { s ->
-                        // 不预填第一个账户：以前 chip 直接显示「现金」，用户根本看不出那是个
-                        // 账户选择器，于是「支出不能选账户」（v1.8.1 #4）。改成未选时显示「选账户」。
-                        // 只有一个账户时无从选择，自动带上，免得每次多点一次。
-                        s.copy(
-                            accounts = list,
-                            // 借贷账户不能当资金账户，预选时跳过它
-                            accountId = s.accountId ?: list.filter { it.type != AccountType.DEBT }.singleOrNull()?.id,
-                        )
-                    }
+                    _state.update { it.copy(accounts = list) }
+                    // 不预填第一个账户：以前 chip 直接显示「现金」，用户根本看不出那是个
+                    // 账户选择器，于是「支出不能选账户」（v1.8.1 #4）。
+                    // 预选规则统一收在 preferredAccount 里（v1.9.3 第 2 条加了记忆）
+                    applyMemory()
                 }
-            }
-        }
-
-        private fun applyDefaultTime() {
-            viewModelScope.launch {
-                val snapshot = runCatching { settings.current() }.getOrNull() ?: return@launch
-                if (snapshot.defaultTimeMode != DefaultTimeMode.FIXED) return@launch
-                val minutes = snapshot.fixedTimeMinutes
-                val time = LocalTime.of(minutes / 60 % 24, minutes % 60)
-                val millis = DateUtils.toMillis(DateUtils.today(), time)
-                _state.update { it.copy(dateTime = millis) }
             }
         }
 
@@ -308,7 +417,9 @@ class EditorViewModel
             _state.update {
                 it.copy(
                     type = type,
-                    categoryId = if (type == TxnType.EXPENSE || type == TxnType.INCOME) null else it.categoryId,
+                    // 换类型必须换分类：支出分类拿去记收入会存出「收入 / 晚餐」这种错账。
+                    // 取新类型自己的记忆值，切回来时还能恢复刚才选的（v1.9.3 第 2 条）
+                    categoryId = preferredCategory(it.categories, type),
                     // 借贷不选分类，资金账户也不能是借贷账户
                     accountId = if (type == TxnType.DEBT) it.fundAccounts.firstOrNull()?.id else it.accountId,
                     debtAccountId = if (type == TxnType.DEBT) it.debtAccounts.firstOrNull()?.id else null,
@@ -364,13 +475,18 @@ class EditorViewModel
             }
         }
 
-        fun selectCategory(id: String) = _state.update { it.copy(categoryId = id, dirty = true) }
+        fun selectCategory(id: String) {
+            sessionPicks[_state.value.type] = id
+            _state.update { it.copy(categoryId = id, dirty = true) }
+        }
 
-        fun selectAccount(id: String) =
+        fun selectAccount(id: String) {
+            sessionAccountId = id
             _state.update {
                 val to = if (it.type == TxnType.TRANSFER && it.toAccountId == id) it.accountId else it.toAccountId
                 it.copy(accountId = id, toAccountId = to, dirty = true)
             }
+        }
 
         fun selectToAccount(id: String) =
             _state.update {
@@ -467,7 +583,7 @@ class EditorViewModel
                 _state.update { it.copy(saving = true, error = null) }
                 when (val result = saveTxn(draft)) {
                     is AppResult.Success -> {
-                        runCatching { settings.setLastTxnType(s.type) }
+                        rememberSelection(s)
                         saveTags(result.data, s.selectedTagIds)
                         _state.update { it.copy(saving = false) }
                         _events.emit(EditorEvent.Saved(result.data))
@@ -530,7 +646,7 @@ class EditorViewModel
                 val finalId = lastId
                 if (finalId != null) {
                     s.editingId?.let { runCatching { txnRepository.softDelete(it, System.currentTimeMillis()) } }
-                    runCatching { settings.setLastTxnType(s.type) }
+                    rememberSelection(s)
                     _state.update { it.copy(saving = false) }
                     _events.emit(EditorEvent.Saved(finalId))
                 }
