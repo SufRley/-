@@ -1,5 +1,8 @@
 package com.xxjz.ledger.feature.editor
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,21 +22,28 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,6 +54,7 @@ import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.DebtDirection
 import com.xxjz.ledger.domain.model.TxnType
+import kotlinx.coroutines.launch
 
 /**
  * 全屏记账页（AC-01，v1.9.1 第 5 条）。
@@ -73,7 +84,27 @@ fun EditorScreen(
     val picks = remember { PickHost() }
     var newDebtName by remember { mutableStateOf("") }
     var showPhotoMenu by remember { mutableStateOf(false) }
+    var showPermissionGuide by remember { mutableStateOf(false) }
     val photos = rememberPhotoCapture(onCaptured = viewModel::setPhoto)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+
+    // 拍照前的相机权限闸门（v1.9.3 第 3 条）：不申请就会在 startActivity 时抛 SecurityException
+    val cameraGate =
+        rememberCameraGate(
+            onGranted = {
+                if (!photos.takePhoto()) {
+                    scope.launch { snackbar.showSnackbar("这台设备没有可用的相机，已为你打开相册") }
+                    photos.pickFromGallery()
+                }
+            },
+            onDenied = {
+                scope.launch { snackbar.showSnackbar("未授予相机权限，已为你打开相册") }
+                photos.pickFromGallery()
+            },
+            onBlocked = { showPermissionGuide = true },
+        )
 
     LaunchedEffect(editTxnId) {
         if (editTxnId != null) viewModel.loadForEdit(editTxnId)
@@ -87,82 +118,86 @@ fun EditorScreen(
         }
     }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .testTag("editor_screen"),
-    ) {
-        EditorHeader(
-            editing = state.editingId != null,
-            saving = state.saving,
-            onBack = onDismiss,
-            onSave = viewModel::submitOrEvaluate,
-        )
-        EditorTypeTabs(current = state.type, onSelect = viewModel::setType)
-
-        // 内容区吃满剩余空间，计算器永远贴底，键盘弹起也不会把输入区挤没
+    Box(Modifier.fillMaxSize()) {
         Column(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp),
+                    .fillMaxSize()
+                    .testTag("editor_screen"),
         ) {
-            CategoryAmountRow(state = state, onPickCategory = { picks.category = true })
-            if (state.type == TxnType.EXPENSE || state.type == TxnType.INCOME) {
-                Spacer(Modifier.height(12.dp))
-                QuickCategoryGrid(
-                    items = state.quickCategories,
-                    selectedId = state.categoryId,
-                    onSelect = viewModel::selectCategory,
-                )
-            }
-            Spacer(Modifier.height(14.dp))
-            PaymentSection(
-                state = state,
-                viewModel = viewModel,
-                onPickAccount = { picks.account = true },
-                onPickToAccount = { picks.toAccount = true },
-                onPickDebtAccount = { picks.debtAccount = true },
-                onNewDebt = {
-                    newDebtName = ""
-                    picks.newDebt = true
-                },
+            EditorHeader(
+                editing = state.editingId != null,
+                saving = state.saving,
+                onBack = onDismiss,
+                onSave = viewModel::submitOrEvaluate,
             )
-            Spacer(Modifier.height(12.dp))
-            NoteAndPhotoRow(
-                note = state.note,
-                onNoteChange = viewModel::setNote,
-                hasPhoto = state.photoPath != null,
-                onPhotoClick = { showPhotoMenu = true },
-                onPhotoRemove = { viewModel.setPhoto(null) },
-            )
-            Spacer(Modifier.height(10.dp))
-            TagStrip(
-                tags = state.tags,
-                selected = state.selectedTagIds,
-                onToggle = viewModel::toggleTag,
-            )
-            state.error?.let {
-                Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
-            Spacer(Modifier.height(12.dp))
-        }
+            EditorTypeTabs(current = state.type, onSelect = viewModel::setType)
 
-        CalcPad(
-            expression = state.calc.expressionText,
-            display = if (state.splitMode) MoneyFormatter.centsToYuan(state.splitTotal) else state.amountDisplay,
-            error = state.calc.error,
-            accentIncome = state.type == TxnType.INCOME,
-            // 组合支付时金额由各账户分摊决定，计算器置灰避免两套真相
-            enabled = !state.splitMode,
-            onKey = { key -> handleKey(viewModel, key) },
-            onBackspace = viewModel::backspace,
-            onBackspaceLong = { repeat(8) { viewModel.backspace() } },
-        )
+            // 内容区吃满剩余空间，计算器永远贴底，键盘弹起也不会把输入区挤没
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+            ) {
+                CategoryAmountRow(state = state, onPickCategory = { picks.category = true })
+                if (state.type == TxnType.EXPENSE || state.type == TxnType.INCOME) {
+                    Spacer(Modifier.height(12.dp))
+                    QuickCategoryGrid(
+                        items = state.quickCategories,
+                        selectedId = state.categoryId,
+                        onSelect = viewModel::selectCategory,
+                    )
+                }
+                Spacer(Modifier.height(14.dp))
+                PaymentSection(
+                    state = state,
+                    viewModel = viewModel,
+                    onPickAccount = { picks.account = true },
+                    onPickToAccount = { picks.toAccount = true },
+                    onPickDebtAccount = { picks.debtAccount = true },
+                    onNewDebt = {
+                        newDebtName = ""
+                        picks.newDebt = true
+                    },
+                )
+                Spacer(Modifier.height(12.dp))
+                NoteAndPhotoRow(
+                    note = state.note,
+                    onNoteChange = viewModel::setNote,
+                    hasPhoto = state.photoPath != null,
+                    processing = photos.processing.value,
+                    onPhotoClick = { showPhotoMenu = true },
+                    onPhotoRemove = { viewModel.setPhoto(null) },
+                )
+                Spacer(Modifier.height(10.dp))
+                TagStrip(
+                    tags = state.tags,
+                    selected = state.selectedTagIds,
+                    onToggle = viewModel::toggleTag,
+                )
+                state.error?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+
+            CalcPad(
+                expression = state.calc.expressionText,
+                display = if (state.splitMode) MoneyFormatter.centsToYuan(state.splitTotal) else state.amountDisplay,
+                error = state.calc.error,
+                accentIncome = state.type == TxnType.INCOME,
+                // 组合支付时金额由各账户分摊决定，计算器置灰避免两套真相
+                enabled = !state.splitMode,
+                onKey = { key -> handleKey(viewModel, key) },
+                onBackspace = viewModel::backspace,
+                onBackspaceLong = { repeat(8) { viewModel.backspace() } },
+            )
+        }
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 
     EditorPickDialogs(
@@ -195,13 +230,46 @@ fun EditorScreen(
         PhotoSourceDialog(
             onCamera = {
                 showPhotoMenu = false
-                photos.takePhoto()
+                cameraGate.request()
             },
             onGallery = {
                 showPhotoMenu = false
                 photos.pickFromGallery()
             },
             onDismiss = { showPhotoMenu = false },
+        )
+    }
+
+    if (showPermissionGuide) {
+        AlertDialog(
+            onDismissRequest = { showPermissionGuide = false },
+            title = { Text("相机权限已被关闭") },
+            text = { Text("你之前拒绝过相机权限，系统不会再弹询问框。可以去设置里重新打开，也可以直接从相册选照片。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionGuide = false
+                        runCatching {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                ),
+                            )
+                        }
+                    },
+                    modifier = Modifier.testTag("camera_open_settings"),
+                ) { Text("去设置") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showPermissionGuide = false
+                        photos.pickFromGallery()
+                    },
+                    modifier = Modifier.testTag("camera_use_gallery"),
+                ) { Text("用相册") }
+            },
         )
     }
 }
@@ -428,6 +496,7 @@ private fun NoteAndPhotoRow(
     note: String,
     onNoteChange: (String) -> Unit,
     hasPhoto: Boolean,
+    processing: Boolean,
     onPhotoClick: () -> Unit,
     onPhotoRemove: () -> Unit,
 ) {
@@ -446,7 +515,8 @@ private fun NoteAndPhotoRow(
         )
         Box {
             Surface(
-                onClick = onPhotoClick,
+                // 压缩落盘期间不接受点击：重复点会再拉一次相机，回来两个结果互相覆盖
+                onClick = { if (!processing) onPhotoClick() },
                 shape = RoundedCornerShape(12.dp),
                 color =
                     if (hasPhoto) {
@@ -457,17 +527,24 @@ private fun NoteAndPhotoRow(
                 modifier = Modifier.size(PhotoButtonSize).testTag("btn_photo"),
             ) {
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                    Icon(
-                        imageVector = Icons.Outlined.PhotoCamera,
-                        contentDescription = if (hasPhoto) "已附收据，点击更换" else "添加收据照片",
-                        modifier = Modifier.size(22.dp),
-                        tint =
-                            if (hasPhoto) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
-                    )
+                    if (processing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp).testTag("photo_processing"),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.PhotoCamera,
+                            contentDescription = if (hasPhoto) "已附收据，点击更换" else "添加收据照片",
+                            modifier = Modifier.size(22.dp),
+                            tint =
+                                if (hasPhoto) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                        )
+                    }
                 }
             }
             if (hasPhoto) {

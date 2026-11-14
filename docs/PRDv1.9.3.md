@@ -223,7 +223,7 @@ override fun onStop() {
 
 ## 三、相机闪退修复
 
-### 3.1 根因（两条，都会崩或卡）
+### 3.1 根因（三条，都会崩或卡）
 
 **根因 A：声明了 CAMERA 却没申请**
 
@@ -250,6 +250,31 @@ requires android.permission.CAMERA
 
 一张 4000×3000 的照片，这段在低端机上 1～3 秒。主线程卡住超过 5 秒就是 ANR，用户感知同样是「点了就卡死/闪退」。即使不 ANR，这期间任何触摸都被吞掉。
 
+**根因 C：采样率判据写错，大图按原尺寸解码**
+
+`EditorPhoto.sampleSizeOf()` 原本是：
+
+```kotlin
+while (width / (sample * 2) >= MAX_PHOTO_EDGE && height / (sample * 2) >= MAX_PHOTO_EDGE) {
+    sample *= 2
+}
+```
+
+`&&` 要求**长边和短边都**达到 3200 才降采样。一张 4000×3000 的相机原图，短边 3000/2 = 1500 < 1600，条件不成立，`sample` 停在 1——于是 `BitmapFactory` 按 4000×3000 全尺寸解码，单张位图约 **48MB**。加上解码缓冲与旋转时的第二张副本，峰值逼近 100MB，低端机直接 `OutOfMemoryError`。
+
+这是「闪退」的第三个独立原因，而且它和权限无关：**即使权限全给了，只要照片够大照样崩**。正确判据是只看长边。
+
+### 3.1.1 验证方式
+
+三条根因靠一张测试表区分：
+
+| 现象 | 指向 |
+|---|---|
+| 点「拍照」立刻崩，什么都没发生 | 根因 A（权限） |
+| 拍完、回到 App 的一瞬间卡住然后崩 | 根因 B（主线程） |
+| 拍完回 App 后崩，且是大分辨率照片 | 根因 C（采样率） |
+| 从相册选图也崩 | 只有 B / C，与权限无关 |
+
 ### 3.2 定稿
 
 | # | 修法 |
@@ -262,6 +287,8 @@ requires android.permission.CAMERA
 | B1 | `compressTo()` 整体挪到 `Dispatchers.IO`。`rememberPhotoCapture` 里取 `rememberCoroutineScope()`，回调中 `scope.launch(Dispatchers.IO)` 跑压缩，成功回到主线程 `onCaptured(path)`。**不要在 composable 里直接调 `viewModelScope`**——照片不属于业务状态机，塞进 ViewModel 反而多一层耦合 |
 | B2 | 压缩期间在相机按钮上显示一个小 `CircularProgressIndicator`，禁止重复点击 |
 | B3 | 压缩失败（返回 null）→ 提示「照片处理失败」，不写入 `photoPath`，不崩 |
+| C1 | `sampleSizeOf` 判据改为只看长边：`while (maxOf(w, h) / (s * 2) >= MAX_PHOTO_EDGE)` |
+| C2 | 补断言：4000×3000 → 采样 2（解码后 2000×1500，约 12MB），8000×6000 → 采样 4 |
 
 **不改的部分**：`FileProvider` 配置（`${applicationId}.fileprovider` 与 manifest 已一致）、`file_paths.xml` 已有 `cache-path`、`compressTo` 的采样/旋转/缩放算法。
 

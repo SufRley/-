@@ -29,7 +29,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -40,13 +43,16 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.xxjz.ledger.core.common.Logger
 import com.xxjz.ledger.ui.lock.LocalExternalActivityGate
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 
 /** 收据照片的最长边：足够看清小票，又不至于让备份包变成几十兆。 */
-private const val MAX_PHOTO_EDGE = 1600
+internal const val MAX_PHOTO_EDGE = 1600
 
 private const val PHOTO_QUALITY = 85
 
@@ -54,8 +60,11 @@ private const val TAG = "EditorPhoto"
 
 /** 拍照 / 相册两个动作的句柄，由 [rememberPhotoCapture] 返回。 */
 class PhotoCapture internal constructor(
-    val takePhoto: () -> Unit,
+    /** 启动相机；返回 false 表示这台设备没有能拍照的 App，调用方该降级到相册。 */
+    val takePhoto: () -> Boolean,
     val pickFromGallery: () -> Unit,
+    /** 正在压缩落盘：期间按钮要转圈并禁止重复点。 */
+    val processing: State<Boolean>,
 )
 
 /**
@@ -66,31 +75,45 @@ class PhotoCapture internal constructor(
  * - 缩放后顺时针校正 EXIF 旋转，避免在某些机型上竖着拍出来是横的。
  *
  * 落盘用 filesDir 而不是 cacheDir：备份会把照片一起打包，缓存被系统清掉就丢了。
+ *
+ * **压缩必须在 IO 线程**（v1.9.3 第 3 条）：解码 + 旋转 + 缩放 + 写盘在主线程要 1~3 秒，
+ * 低端机上直接 ANR，用户感知就是「点了就卡死」。
  */
 @Composable
 internal fun rememberPhotoCapture(onCaptured: (String?) -> Unit): PhotoCapture {
     val context = LocalContext.current
     // 相机与相册都是独立 Activity，回来时别让应用锁把用户拦在门外（v1.9.3 第 1 条）
     val gate = LocalExternalActivityGate.current
+    val scope = rememberCoroutineScope()
     // 拍照要先给出目标 Uri，拍完再读回来；这里用 remember 保住这个中间文件
     val pending = remember { arrayOfNulls<File>(1) }
+    val processing = remember { mutableStateOf(false) }
+
+    val compress: (Uri?) -> Unit = { uri ->
+        if (uri != null) {
+            processing.value = true
+            scope.launch(Dispatchers.IO) {
+                val path = compressTo(context, uri)
+                withContext(Dispatchers.Main) {
+                    processing.value = false
+                    onCaptured(path)
+                }
+            }
+        }
+    }
 
     val cameraLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
             gate.end()
             val file = pending[0]
-            if (ok && file != null) {
-                onCaptured(compressTo(context, Uri.fromFile(file)))
-            } else {
-                file?.delete()
-            }
             pending[0] = null
+            if (ok && file != null) compress(Uri.fromFile(file)) else file?.delete()
         }
 
     val galleryLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             gate.end()
-            if (uri != null) onCaptured(compressTo(context, uri))
+            compress(uri)
         }
 
     return remember(context, gate) {
@@ -99,14 +122,26 @@ internal fun rememberPhotoCapture(onCaptured: (String?) -> Unit): PhotoCapture {
                 val target = newTempFile(context)
                 pending[0] = target
                 gate.begin()
-                cameraLauncher.launch(
-                    FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target),
-                )
+                // 部分平板/模拟器根本没有相机 App，launch 会抛 ActivityNotFoundException。
+                // 用 resolveActivity 预判不可靠：Android 11 的包可见性会让它误报「没有相机」。
+                val launched =
+                    runCatching {
+                        cameraLauncher.launch(
+                            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target),
+                        )
+                    }.isSuccess
+                if (!launched) {
+                    gate.end()
+                    pending[0] = null
+                    target.delete()
+                }
+                launched
             },
             pickFromGallery = {
                 gate.begin()
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
+            processing = processing,
         )
     }
 }
@@ -175,13 +210,20 @@ private fun Bitmap.rotatedIfNeeded(degrees: Int): Bitmap {
     return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
 }
 
-/** 两段式采样率：让解码后的长边落在 [MAX_PHOTO_EDGE] 的两倍以内，留出缩放余量。 */
-private fun sampleSizeOf(
+/**
+ * 两段式采样率：让解码后的**长边**落在 [MAX_PHOTO_EDGE] 的两倍以内，留出缩放余量。
+ *
+ * 判据必须只看长边。早先用 `width/(s*2) >= MAX && height/(s*2) >= MAX`，
+ * 结果 4000×3000 因为短边 1500 不到 1600 而算出 sample = 1，
+ * 相当于按原尺寸解码 48MB 的位图——低端机上直接 OOM（v1.9.3 第 3 条根因 C）。
+ */
+internal fun sampleSizeOf(
     width: Int,
     height: Int,
 ): Int {
+    val edge = maxOf(width, height)
     var sample = 1
-    while (width / (sample * 2) >= MAX_PHOTO_EDGE && height / (sample * 2) >= MAX_PHOTO_EDGE) {
+    while (edge / (sample * 2) >= MAX_PHOTO_EDGE) {
         sample *= 2
     }
     return sample
