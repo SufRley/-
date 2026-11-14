@@ -2,6 +2,8 @@ package com.xxjz.ledger.feature.report
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.usecase.AssetBreakdown
 import com.xxjz.ledger.domain.usecase.AssetChange
 import com.xxjz.ledger.domain.usecase.GetAssetBreakdownUseCase
@@ -23,6 +25,13 @@ import javax.inject.Inject
 
 /** 资产报表页状态（PRD 5.2 四板块）。 */
 data class AssetReportUiState(
+    /**
+     * 原始账户列表（v1.9.3 第 5 条）。
+     *
+     * 「账户 / 类型」两种口径的饼图都由页面现算：切换分段控件时不该再走一遍数据库，
+     * 账户列表本来就已经在内存里了。
+     */
+    val accounts: List<Account> = emptyList(),
     val assets: AssetBreakdown = AssetBreakdown(emptyList()),
     val liability: LiabilityBreakdown = LiabilityBreakdown(emptyList()),
     val trend: NetWorthTrend = NetWorthTrend(TrendPeriod.MONTH, emptyList()),
@@ -48,24 +57,28 @@ class AssetReportViewModel
         liabilityBreakdown: GetLiabilityBreakdownUseCase,
         private val netWorthTrend: GetNetWorthTrendUseCase,
         private val assetChanges: GetAssetChangesUseCase,
+        private val accountRepository: AccountRepository,
     ) : ViewModel() {
         private val period = MutableStateFlow(TrendPeriod.MONTH)
 
         @OptIn(ExperimentalCoroutinesApi::class)
         private val trend = period.flatMapLatest { netWorthTrend.observe(it) }
 
+        /** 账户列表只用于「账户 / 类型」两种口径的现算，不参与其他板块。 */
+        private val accounts = accountRepository.observeWithBalances()
+
         val state: StateFlow<AssetReportUiState> =
             combine(
-                assetBreakdown.observe(),
-                liabilityBreakdown.observe(),
+                combine(assetBreakdown.observe(), liabilityBreakdown.observe(), accounts) { a, l, acc -> Triple(a, l, acc) },
                 trend,
                 assetChanges.observe(),
                 period,
-            ) { assets, liability, trend, changes, period ->
+            ) { (assets, liability, accountList), trendData, changes, period ->
                 AssetReportUiState(
+                    accounts = accountList,
                     assets = assets,
                     liability = liability,
-                    trend = trend,
+                    trend = trendData,
                     changes = changes,
                     period = period,
                     loading = false,

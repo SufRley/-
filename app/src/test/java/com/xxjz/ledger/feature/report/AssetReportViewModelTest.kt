@@ -101,6 +101,7 @@ class AssetReportViewModelTest {
             liabilityBreakdown = GetLiabilityBreakdownUseCase(accountRepo),
             netWorthTrend = GetNetWorthTrendUseCase(accountRepo, txnRepo, store),
             assetChanges = GetAssetChangesUseCase(accountRepo, txnRepo, categoryRepo, store),
+            accountRepository = accountRepo,
         )
     }
 

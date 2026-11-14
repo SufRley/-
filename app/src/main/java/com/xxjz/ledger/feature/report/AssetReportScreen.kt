@@ -1,7 +1,5 @@
 package com.xxjz.ledger.feature.report
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,14 +13,14 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -71,6 +69,7 @@ import com.xxjz.ledger.domain.usecase.BreakdownCalculator
 import com.xxjz.ledger.domain.usecase.TrendPeriod
 import com.xxjz.ledger.domain.usecase.TrendPoint
 import kotlin.math.abs
+import com.xxjz.ledger.domain.usecase.BreakdownCalculator.Mode as BreakdownMode
 
 /**
  * 资产报表页（v1.8.0 / PRD 5.2）。
@@ -91,9 +90,9 @@ fun AssetReportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 每块至少半屏高：小屏上一屏放两块，大屏上留白而不是把内容拉伸变形
     val halfScreen = (LocalConfiguration.current.screenHeightDp / 2).dp
-    // 圆心显示模式由页面级持有，资产/负债两块共用一份（PRD 第 4 条：共用避免同屏两块不一致）
-    var center by remember { mutableStateOf(PieCenter.AMOUNT) }
-    var centerTouched by remember { mutableStateOf(false) }
+    // 两块卡片各自记住「按账户 / 按类型」（v1.9.3 第 5 条：截图里两块就不一致，说明本该独立）
+    var assetsMode by remember { mutableStateOf(BreakdownMode.ACCOUNT) }
+    var liabilityMode by remember { mutableStateOf(BreakdownMode.ACCOUNT) }
 
     // v1.9.3 第 4 条：去掉 TopAppBar（64dp + 状态栏 inset），换紧凑头，
     // 与明细 / 账户 / 待报销页同一起点，不再出现「上面空一块」。
@@ -125,27 +124,8 @@ fun AssetReportScreen(
                     .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            NetWorthHeadline(net = state.net, assets = state.assets.total, liability = state.liability.total)
-            AssetPanel(
-                state = state,
-                minHeight = halfScreen,
-                center = center,
-                onToggleCenter = {
-                    center = if (center == PieCenter.AMOUNT) PieCenter.PERCENT else PieCenter.AMOUNT
-                    centerTouched = true
-                },
-                showHint = !centerTouched,
-            )
-            LiabilityPanel(
-                state = state,
-                minHeight = halfScreen,
-                center = center,
-                onToggleCenter = {
-                    center = if (center == PieCenter.AMOUNT) PieCenter.PERCENT else PieCenter.AMOUNT
-                    centerTouched = true
-                },
-                showHint = !centerTouched,
-            )
+            AssetPanel(state = state, mode = assetsMode, onModeChange = { assetsMode = it })
+            LiabilityPanel(state = state, mode = liabilityMode, onModeChange = { liabilityMode = it })
             TrendPanel(state, halfScreen, onPeriod = viewModel::setPeriod)
             ChangesPanel(state, halfScreen, onOpenTxn)
             Spacer(Modifier.height(16.dp))
@@ -153,40 +133,41 @@ fun AssetReportScreen(
     }
 }
 
-/** 四板块的描边色（D12：绿 / 红 / 蓝 / 金）。 */
+/** 板块主题色（D12：绿 / 红 / 蓝），用于数值着色与趋势线。 */
 private val AssetGreen = Color(0xFF2E9E6B)
 private val LiabilityRed = Color(0xFFD9534F)
 private val TrendBlue = Color(0xFF3B7DD8)
-private val ChangeGold = Color(0xFFC99A2E)
 
 /**
- * 板块容器：统一「描边 + 标题 + 半屏最小高度」，四个调用点只关心内容。
+ * 板块容器：浅灰底、无描边、圆角 20（v1.9.3 第 5 条按截图重做）。
  *
+ * 以前是白底 + 1.5dp 彩色描边 + 标题前一个彩色圆点，整页看下来像四张警告卡片。
+ * 截图里是干净的浅灰卡，层级全靠留白和字号，这里就照这个来。
+ *
+ * @param minHeight 趋势/变化两块仍要占半屏，构成卡则由内容自然撑开
  * @param tag 测试与 UI 走查用的稳定标识
  */
 @Composable
 private fun SectionPanel(
     title: String,
-    accent: Color,
-    minHeight: Dp,
+    minHeight: Dp?,
     tag: String,
     headerExtra: @Composable (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
+    val base = Modifier.fillMaxWidth().testTag(tag)
     Surface(
-        modifier = Modifier.fillMaxWidth().heightIn(min = minHeight).testTag(tag),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.5.dp, accent.copy(alpha = 0.65f)),
+        modifier = if (minHeight != null) base.heightIn(min = minHeight) else base,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
-                Spacer(Modifier.width(8.dp))
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.width(8.dp))
                 Box(Modifier.weight(1f))
@@ -198,98 +179,84 @@ private fun SectionPanel(
     }
 }
 
-/** 顶部抬头：净资产一个大数字，两侧资产/负债小字（与账户页口径完全一致）。 */
-@Composable
-private fun NetWorthHeadline(
-    net: Long,
-    assets: Long,
-    liability: Long,
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                "净资产",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = MoneyFormatter.centsToYuan(net, showSymbol = true),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.testTag("asset_report_net"),
-            )
-            Spacer(Modifier.height(6.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                MiniAmount("总资产", assets, AssetGreen)
-                MiniAmount("总负债", liability, LiabilityRed)
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniAmount(
-    label: String,
-    cents: Long,
-    color: Color,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = MoneyFormatter.centsToYuan(cents, showSymbol = true),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = color,
-        )
-    }
-}
-
-/** 板块①：资产构成（绿）。 */
+/** 板块①：资产构成。 */
 @Composable
 private fun AssetPanel(
     state: AssetReportUiState,
-    minHeight: Dp,
-    center: PieCenter,
-    onToggleCenter: () -> Unit,
-    showHint: Boolean,
+    mode: BreakdownMode,
+    onModeChange: (BreakdownMode) -> Unit,
 ) {
-    val slices = state.assets.nonZero
-    SectionPanel(
+    val breakdown = remember(state.accounts, mode) { BreakdownCalculator.assets(state.accounts, mode) }
+    BreakdownPanel(
         title = "资产构成",
-        accent = AssetGreen,
-        minHeight = minHeight,
         tag = "panel_assets",
-        headerExtra = {
-            Text(
-                MoneyFormatter.centsToYuan(state.assets.total, showSymbol = true),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = AssetGreen,
-            )
-        },
-    ) {
+        totalLabel = "总资产",
+        mode = mode,
+        onModeChange = onModeChange,
+        slices = breakdown.nonZero,
+        excludedInvest = breakdown.excludedInvest,
+        emptyTitle = "还没有资产",
+        emptyDescription = "新建账户并记上几笔账，这里就会显示构成占比",
+    )
+}
+
+/** 板块②：负债构成。 */
+@Composable
+private fun LiabilityPanel(
+    state: AssetReportUiState,
+    mode: BreakdownMode,
+    onModeChange: (BreakdownMode) -> Unit,
+) {
+    val breakdown = remember(state.accounts, mode) { BreakdownCalculator.liabilities(state.accounts, mode) }
+    BreakdownPanel(
+        title = "负债构成",
+        tag = "panel_liability",
+        totalLabel = "总负债",
+        mode = mode,
+        onModeChange = onModeChange,
+        slices = breakdown.nonZero,
+        excludedInvest = 0,
+        emptyTitle = "没有负债",
+        emptyDescription = "信用卡欠款、借贷未结清、储蓄卡透支都会汇总到这里",
+    )
+}
+
+/**
+ * 资产 / 负债构成卡（v1.9.3 第 5 条）。
+ *
+ * 两块共用同一套实现，但各自持有「金额 / 占比」与「账户 / 类型」两个选择——
+ * 截图里资产块显示金额、负债块显示占比，这正说明它们本来就该独立。
+ */
+@Composable
+private fun BreakdownPanel(
+    title: String,
+    tag: String,
+    totalLabel: String,
+    mode: BreakdownMode,
+    onModeChange: (BreakdownMode) -> Unit,
+    slices: List<AssetSlice>,
+    excludedInvest: Long,
+    emptyTitle: String,
+    emptyDescription: String,
+) {
+    SectionPanel(title = title, minHeight = null, tag = tag) {
         if (slices.isEmpty()) {
             Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                EmptyState(title = "还没有资产", description = "新建账户并记上几笔账，这里就会显示构成占比")
+                EmptyState(title = emptyTitle, description = emptyDescription)
             }
         } else {
             BreakdownPie(
                 slices = slices,
-                total = state.assets.total,
-                tag = "pie_assets",
-                center = center,
-                onToggleCenter = onToggleCenter,
-                showToggleHint = showHint,
+                total = slices.sumOf { it.amount },
+                totalLabel = totalLabel,
+                tag = tag,
+                mode = mode,
+                onModeChange = onModeChange,
             )
-            if (state.assets.excludedInvest > 0) {
+            if (excludedInvest > 0) {
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "另有投资市值 ${MoneyFormatter.centsToYuan(state.assets.excludedInvest, showSymbol = true)} 未计入净资产",
+                    text = "另有投资市值 ${MoneyFormatter.centsToYuan(excludedInvest, showSymbol = true)} 未计入净资产",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.testTag("invest_excluded_hint"),
@@ -299,48 +266,7 @@ private fun AssetPanel(
     }
 }
 
-/** 板块②：负债构成（红）。 */
-@Composable
-private fun LiabilityPanel(
-    state: AssetReportUiState,
-    minHeight: Dp,
-    center: PieCenter,
-    onToggleCenter: () -> Unit,
-    showHint: Boolean,
-) {
-    val slices = state.liability.nonZero
-    SectionPanel(
-        title = "负债构成",
-        accent = LiabilityRed,
-        minHeight = minHeight,
-        tag = "panel_liability",
-        headerExtra = {
-            Text(
-                MoneyFormatter.centsToYuan(state.liability.total, showSymbol = true),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = LiabilityRed,
-            )
-        },
-    ) {
-        if (slices.isEmpty()) {
-            Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                EmptyState(title = "没有负债", description = "信用卡欠款、借贷未结清、储蓄卡透支都会汇总到这里")
-            }
-        } else {
-            BreakdownPie(
-                slices = slices,
-                total = state.liability.total,
-                tag = "pie_liability",
-                center = center,
-                onToggleCenter = onToggleCenter,
-                showToggleHint = showHint,
-            )
-        }
-    }
-}
-
-/** 饼图圆心的显示模式（v1.9.0 / PRD 第 4 条）。 */
+/** 圆心的显示模式（v1.9.0 第 4 条；v1.9.3 把圆心里的数字拿掉了）。 */
 private enum class PieCenter { AMOUNT, PERCENT }
 
 /**
@@ -370,27 +296,24 @@ private fun sliceColor(
 ): Color = if (label == BreakdownCalculator.OTHER_LABEL) OtherGray else AssetPalette[index % AssetPalette.size]
 
 /**
- * 饼图 + 图边占比标注 + 点击圆心切换「金额 / 百分比」（PRD 第 4 条）。
+ * 饼图 + 引导标签 + 下方总额 + 口径切换（v1.9.3 第 5 条）。
  *
  * 三个交互分开：
- * - 点扇区 / 图例行 → 选中该段（再点取消）；
- * - 点圆心 → 在金额与百分比之间切换；
+ * - 点扇区 → 选中该段（圆心显示它的名字和数值），再点一次取消；
+ * - 点圆心 → 未选中时切换「金额 / 占比」，已选中时取消选中；
  * - 点其他地方 → 什么都不做。
- *
- * @param center 当前显示模式，由父级持有，资产/负债两块共用一份，切换其一另一块同步
- * @param onToggleCenter 切换模式
- * @param showToggleHint 是否还要显示「点击切换」提示（用户切换过一次后就不再提示）
  */
 @Composable
 private fun BreakdownPie(
     slices: List<AssetSlice>,
     total: Long,
+    totalLabel: String,
     tag: String,
-    center: PieCenter,
-    onToggleCenter: () -> Unit,
-    showToggleHint: Boolean,
+    mode: BreakdownMode,
+    onModeChange: (BreakdownMode) -> Unit,
 ) {
     var selected by remember(slices) { mutableIntStateOf(-1) }
+    var display by remember { mutableStateOf(PieCenter.AMOUNT) }
     val palette = slices.mapIndexed { index, slice -> sliceColor(slice.label, index) }
     val pieSlices =
         slices.mapIndexed { index, slice ->
@@ -402,104 +325,171 @@ private fun BreakdownPie(
         }
     val active = slices.getOrNull(selected)
 
-    Column {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().testTag(tag), contentAlignment = Alignment.Center) {
             if (pieSlices.isEmpty()) {
                 EmptyRing(modifier = Modifier.size(180.dp))
             } else {
                 LabeledPieChart(
                     slices = pieSlices,
-                    // 每块都带一条引线连到账户名，省得在饼和图例之间来回对照
+                    // 标签跟随当前模式：金额模式写金额，占比模式写百分比（截图就是这样）
                     callouts =
-                        slices.mapIndexed { index, slice ->
+                        slices.map { slice ->
                             PieCallout(
                                 title = slice.label,
-                                // 副标题只放占比：外侧空间只有 78dp，塞金额会溢出压到饼上
-                                subtitle = "${slice.percent(total)}%",
+                                value =
+                                    when (display) {
+                                        PieCenter.AMOUNT -> MoneyFormatter.centsToYuan(slice.amount)
+                                        PieCenter.PERCENT -> "${slice.percent(total)}%"
+                                    },
                             )
                         },
                     selected = selected,
                     onSelect = { selected = if (it == selected) -1 else it },
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        // 圆心可点：点它切换显示模式
-                        modifier =
-                            Modifier
-                                .clip(CircleShape)
-                                .clickable(onClick = onToggleCenter)
-                                .padding(4.dp)
-                                .testTag("${tag}_center"),
-                    ) {
-                        Text(
-                            text = active?.label ?: "合计",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                        )
-                        // 金额两边各加一个箭头：不写「点击切换」，也一眼看得出这里能点
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            ChevronHint(direction = -1)
-                            Text(
-                                text =
-                                    when (center) {
-                                        PieCenter.AMOUNT -> "¥${MoneyFormatter.centsToYuan(active?.amount ?: total)}"
-                                        PieCenter.PERCENT ->
-                                            if (active == null) {
-                                                "100%"
-                                            } else {
-                                                "${active.percent(total)}%"
-                                            }
-                                    },
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 2.dp).testTag("${tag}_center_value"),
-                            )
-                            ChevronHint(direction = 1)
-                        }
-                        if (showToggleHint) {
-                            Text(
-                                text = "点我切换",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
-                            )
-                        }
-                    }
+                    PieCenterLabel(
+                        active = active,
+                        display = display,
+                        total = total,
+                        tag = tag,
+                        onClick = {
+                            if (active != null) {
+                                selected = -1
+                            } else {
+                                display = if (display == PieCenter.AMOUNT) PieCenter.PERCENT else PieCenter.AMOUNT
+                            }
+                        },
+                    )
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        slices.forEachIndexed { index, slice ->
-            val color = palette[index]
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clickable { selected = if (selected == index) -1 else index }
-                        .padding(vertical = 10.dp)
-                        .testTag("${tag}_legend_$index"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(10.dp).clip(CircleShape).background(color))
-                Spacer(Modifier.width(8.dp))
-                Text(slice.label, style = MaterialTheme.typography.bodyMedium)
-                Box(Modifier.weight(1f))
+        Spacer(Modifier.height(12.dp))
+        // 总额放在饼图正下方居中：以前挤在页面顶部的小字里，和饼图对不上
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = totalLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = MoneyFormatter.centsToYuan(total),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.testTag("${tag}_total"),
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        BreakdownModeSwitch(mode = mode, onChange = onModeChange, tag = tag)
+    }
+}
+
+/**
+ * 圆心：只放一个模式标签和双向箭头（v1.9.3 第 5 条明确要求「中间不应该有数字」）。
+ *
+ * 选中扇区时才临时显示「名字 + 数值」，再点一下回到模式标签——这样既不破坏截图里的
+ * 干净感，又保留了「这一段到底多少」的能力。
+ */
+@Composable
+private fun PieCenterLabel(
+    active: AssetSlice?,
+    display: PieCenter,
+    total: Long,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier =
+            Modifier
+                .clip(CircleShape)
+                .clickable(onClick = onClick)
+                .padding(6.dp)
+                .testTag("${tag}_center"),
+    ) {
+        if (active == null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "${slice.percent(total)}%",
+                    text = if (display == PieCenter.AMOUNT) "金额" else "占比",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = MoneyFormatter.centsToYuan(slice.amount, showSymbol = true),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    color = color,
+                Spacer(Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.Filled.SwapHoriz,
+                    contentDescription = "切换金额与占比",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 )
             }
+        } else {
+            Text(
+                text = active.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.widthIn(max = 92.dp).testTag("${tag}_center_title"),
+            )
+            Text(
+                text =
+                    when (display) {
+                        PieCenter.AMOUNT -> MoneyFormatter.centsToYuan(active.amount)
+                        PieCenter.PERCENT -> "${active.percent(total)}%"
+                    },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                modifier = Modifier.widthIn(max = 92.dp).testTag("${tag}_center_value"),
+            )
         }
+    }
+}
+
+/** 卡片底部的「账户 / 类型」分段控件（v1.9.3 第 5 条）。 */
+@Composable
+private fun BreakdownModeSwitch(
+    mode: BreakdownMode,
+    onChange: (BreakdownMode) -> Unit,
+    tag: String,
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+        modifier = Modifier.testTag("${tag}_mode_switch"),
+    ) {
+        Row(Modifier.padding(3.dp)) {
+            ModeChip("账户", mode == BreakdownMode.ACCOUNT, "${tag}_mode_account") { onChange(BreakdownMode.ACCOUNT) }
+            ModeChip("类型", mode == BreakdownMode.TYPE, "${tag}_mode_type") { onChange(BreakdownMode.TYPE) }
+        }
+    }
+}
+
+@Composable
+private fun ModeChip(
+    label: String,
+    selected: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        contentColor =
+            if (selected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        modifier = Modifier.testTag(tag),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 7.dp),
+        )
     }
 }
 
@@ -517,7 +507,6 @@ private fun TrendPanel(
 
     SectionPanel(
         title = "净资产趋势",
-        accent = TrendBlue,
         minHeight = minHeight,
         tag = "panel_trend",
         headerExtra = {
@@ -621,7 +610,6 @@ private fun ChangesPanel(
 ) {
     SectionPanel(
         title = "资产变化记录",
-        accent = ChangeGold,
         minHeight = minHeight,
         tag = "panel_changes",
         headerExtra = {
@@ -700,19 +688,3 @@ private fun changeSubtitle(change: AssetChange): String =
             change.amountAfter?.let { " · 调整为 ¥${MoneyFormatter.centsToYuan(it)}" } ?: ""
         else -> ""
     }
-
-/**
- * 圆心两侧的小箭头（PRD v1.9.0 第 1 条）。
- *
- * [direction] 为 -1 时指向左、1 时指向右。用图标而不是「◀」字符：
- * 字符在不同字体下大小不一，图标则与文字基线对得齐。
- */
-@Composable
-private fun ChevronHint(direction: Int) {
-    Icon(
-        imageVector = if (direction < 0) Icons.Filled.ChevronLeft else Icons.Filled.ChevronRight,
-        contentDescription = null,
-        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-        modifier = Modifier.size(14.dp),
-    )
-}

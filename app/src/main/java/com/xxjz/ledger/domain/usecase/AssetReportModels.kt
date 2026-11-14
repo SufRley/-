@@ -245,44 +245,100 @@ object BreakdownCalculator {
     /** 「其他」段的固定标签。 */
     const val OTHER_LABEL = "其他"
 
-    fun assets(accounts: List<Account>): AssetBreakdown {
+    /** 拆段口径（v1.9.3 第 5 条）：按单个账户，或按账户类型归并。 */
+    enum class Mode {
+        /** 一个账户一段，标签是账户名。 */
+        ACCOUNT,
+
+        /** 同类型的账户并成一段，标签是类型名。 */
+        TYPE,
+    }
+
+    /**
+     * 一个账户对某个板块的贡献。
+     *
+     * 先把「账户 → 一段」算清楚，再按口径汇总——两种口径共用同一套余额判据，
+     * 才不会出现「切到类型模式总额变了」这种要命的问题。
+     */
+    private data class Contribution(
+        val accountName: String,
+        val typeLabel: String,
+        val amount: Long,
+    )
+
+    fun assets(
+        accounts: List<Account>,
+        mode: Mode = Mode.ACCOUNT,
+    ): AssetBreakdown {
         val visible = accounts.filter { !it.hidden }
         var excluded = 0L
-        val parts = mutableListOf<AssetSlice>()
+        val parts = mutableListOf<Contribution>()
         visible.forEach { account ->
             when (account.type) {
                 // 现金/储蓄卡为正才进资产段；透支的绝对值进负债段
                 AccountType.CASH, AccountType.SAVINGS ->
-                    if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
+                    if (account.balance > 0) parts += Contribution(account.name, assetLabelOf(account.type), account.balance)
                 // 信用账户多还出来的正余额是资产（钱在卡里），标签仍用账户名
-                AccountType.CREDIT -> if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
+                AccountType.CREDIT -> if (account.balance > 0) parts += Contribution(account.name, "信用卡余额", account.balance)
                 // 借贷待收为正（v1.9.0 净值模型：余额符号决定方向）
-                AccountType.DEBT -> if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
+                AccountType.DEBT -> if (account.balance > 0) parts += Contribution(account.name, "借出款", account.balance)
                 AccountType.INVEST ->
                     if (account.includeInNetAssets) {
-                        if (account.marketValueCents > 0) parts += AssetSlice(account.name, account.marketValueCents)
+                        if (account.marketValueCents > 0) parts += Contribution(account.name, "投资", account.marketValueCents)
                     } else {
                         excluded += account.marketValueCents
                     }
             }
         }
-        return AssetBreakdown(slices = foldToLimit(parts), excludedInvest = excluded)
+        return AssetBreakdown(slices = foldToLimit(toSlices(parts, mode)), excludedInvest = excluded)
     }
 
-    fun liabilities(accounts: List<Account>): LiabilityBreakdown {
+    fun liabilities(
+        accounts: List<Account>,
+        mode: Mode = Mode.ACCOUNT,
+    ): LiabilityBreakdown {
         val visible = accounts.filter { !it.hidden }
-        val parts = mutableListOf<AssetSlice>()
+        val parts = mutableListOf<Contribution>()
         visible.forEach { account ->
             when (account.type) {
-                AccountType.CREDIT -> if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
-                AccountType.DEBT -> if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
+                AccountType.CREDIT -> if (account.balance < 0) parts += Contribution(account.name, "信用欠款", -account.balance)
+                AccountType.DEBT -> if (account.balance < 0) parts += Contribution(account.name, "借入款", -account.balance)
                 AccountType.CASH, AccountType.SAVINGS ->
-                    if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
+                    if (account.balance < 0) parts += Contribution(account.name, "储蓄卡透支", -account.balance)
                 AccountType.INVEST -> Unit
             }
         }
-        return LiabilityBreakdown(slices = foldToLimit(parts))
+        return LiabilityBreakdown(slices = foldToLimit(toSlices(parts, mode)))
     }
+
+    /** 资产侧的类型名。 */
+    private fun assetLabelOf(type: AccountType): String =
+        when (type) {
+            AccountType.CASH -> "现金"
+            AccountType.SAVINGS -> "储蓄卡"
+            AccountType.CREDIT -> "信用卡余额"
+            AccountType.INVEST -> "投资"
+            AccountType.DEBT -> "借出款"
+        }
+
+    /**
+     * 按口径汇总成段。
+     *
+     * 类型模式按金额降序，让最大的那块排在最前（饼图从 12 点开始画，大块在前更顺眼）；
+     * 账户模式保持账户原有顺序，和账户页一致。
+     */
+    private fun toSlices(
+        parts: List<Contribution>,
+        mode: Mode,
+    ): List<AssetSlice> =
+        when (mode) {
+            Mode.ACCOUNT -> parts.map { AssetSlice(it.accountName, it.amount) }
+            Mode.TYPE ->
+                parts
+                    .groupBy { it.typeLabel }
+                    .map { (label, items) -> AssetSlice(label, items.sumOf { it.amount }) }
+                    .sortedByDescending { it.amount }
+        }
 
     /**
      * 段数超限时折叠：按金额降序取前 `MAX_SLICES - 1` 段，剩下全部并进「其他」（排最后）。

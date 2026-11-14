@@ -194,6 +194,78 @@ class AssetBreakdownTest {
         assertEquals(summary.liabilities, liability.total)
         assertFalse(assets.isEmpty)
     }
+
+    // ---- 拆段口径（v1.9.3 第 5 条：资产块与负债块各有一套「按账户 / 按类型」开关） ----
+
+    @Test
+    fun defaultModeStaysPerAccount() {
+        // 老行为必须保持默认：改口径是用户主动点出来的，不能悄悄把 Q 卡并进「储蓄卡」
+        val accounts =
+            listOf(
+                account("Q卡", AccountType.SAVINGS, balance = 1_000_00),
+                account("W卡", AccountType.SAVINGS, balance = 500_00),
+            )
+        assertEquals(listOf("Q卡", "W卡"), BreakdownCalculator.assets(accounts).slices.map { it.label })
+    }
+
+    @Test
+    fun typeModeMergesSameTypeAccounts() {
+        val accounts =
+            listOf(
+                account("Q卡", AccountType.SAVINGS, balance = 1_000_00),
+                account("W卡", AccountType.SAVINGS, balance = 500_00),
+                account("现金", AccountType.CASH, balance = 300_00),
+            )
+        val breakdown = BreakdownCalculator.assets(accounts, BreakdownCalculator.Mode.TYPE)
+        assertEquals(listOf("储蓄卡", "现金"), breakdown.slices.map { it.label })
+        assertEquals(listOf(1_500_00L, 300_00L), breakdown.slices.map { it.amount })
+    }
+
+    @Test
+    fun modeSwitchNeverChangesTotal() {
+        // 切口径只改「怎么分」，绝不能改「一共多少」——这是整页数字可信的底线
+        val accounts =
+            listOf(
+                account("现金", AccountType.CASH, balance = 1_234_56),
+                account("Q卡", AccountType.SAVINGS, balance = 5_678_90),
+                account("基金", AccountType.INVEST, market = 2_345_67),
+                account("credit", AccountType.CREDIT, balance = -1_000_00),
+                account("debt", AccountType.DEBT, balance = -300_00),
+            )
+        val byAccount = BreakdownCalculator.assets(accounts, BreakdownCalculator.Mode.ACCOUNT)
+        val byType = BreakdownCalculator.assets(accounts, BreakdownCalculator.Mode.TYPE)
+        assertEquals(byAccount.total, byType.total)
+        val la = BreakdownCalculator.liabilities(accounts, BreakdownCalculator.Mode.ACCOUNT)
+        val lt = BreakdownCalculator.liabilities(accounts, BreakdownCalculator.Mode.TYPE)
+        assertEquals(la.total, lt.total)
+    }
+
+    @Test
+    fun typeModeSortsByAmountDescending() {
+        // 饼图从 12 点顺时针画，最大的那块排最前更顺眼
+        val accounts =
+            listOf(
+                account("小", AccountType.CASH, balance = 100_00),
+                account("Q卡", AccountType.SAVINGS, balance = 3_000_00),
+                account("W卡", AccountType.SAVINGS, balance = 1_000_00),
+            )
+        val breakdown = BreakdownCalculator.assets(accounts, BreakdownCalculator.Mode.TYPE)
+        assertEquals(listOf("储蓄卡", "现金"), breakdown.slices.map { it.label })
+        assertEquals(4_000_00L, breakdown.slices.first().amount)
+    }
+
+    @Test
+    fun typeModeUsesLiabilityLabels() {
+        val accounts =
+            listOf(
+                account("招行卡", AccountType.CREDIT, balance = -2_000_00),
+                account("借呗", AccountType.DEBT, balance = -500_00),
+                account("招行卡2", AccountType.CREDIT, balance = -300_00),
+            )
+        val liability = BreakdownCalculator.liabilities(accounts, BreakdownCalculator.Mode.TYPE)
+        assertEquals(listOf("信用欠款", "借入款"), liability.slices.map { it.label })
+        assertEquals(listOf(2_300_00L, 500_00L), liability.slices.map { it.amount })
+    }
 }
 
 /**
