@@ -38,9 +38,19 @@ enum class BiometricAvailability {
          * BIOMETRIC_WEAK（要留「用密码」按钮走我们自己的 PIN）。设备只设了锁屏密码却没录指纹时，
          * 若用 [of] 判断就会让设置里的开关看起来可用、点开却永远弹不出来。
          */
-        fun hasEnrolledBiometric(context: Context): Boolean =
-            BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) ==
+        fun hasEnrolledBiometric(context: Context): Boolean {
+            val manager = BiometricManager.from(context)
+            // BIOMETRIC_WEAK 同时包含 STRONG，但少数机型/ROM 对 WEAK 的判定异常，
+            // 单独再问一次 STRONG 更稳（v1.9.0：用户反馈「开关灰着打不开」）。
+            val weak =
+                manager.canAuthenticate(
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        BiometricManager.Authenticators.BIOMETRIC_STRONG,
+                )
+            if (weak == BiometricManager.BIOMETRIC_SUCCESS) return true
+            return manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
                 BiometricManager.BIOMETRIC_SUCCESS
+        }
     }
 }
 
@@ -85,7 +95,9 @@ class AndroidBiometricGate(
                 .setAllowedAuthenticators(
                     // 不叠 DEVICE_CREDENTIAL：那会强制去掉「用密码」按钮，
                     // 我们自己的 PIN 才是兜底路径。
-                    BiometricManager.Authenticators.BIOMETRIC_WEAK,
+                    // WEAK | STRONG 是为了兼容只声明了 3 级（Strong）指纹的机型。
+                    BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                        BiometricManager.Authenticators.BIOMETRIC_STRONG,
                 ).build()
         prompt.authenticate(info)
     }

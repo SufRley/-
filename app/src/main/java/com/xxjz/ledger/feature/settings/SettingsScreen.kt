@@ -54,6 +54,8 @@ fun SettingsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var pinDialog by remember { mutableStateOf(PinDialogMode.HIDDEN) }
+    // 「打开指纹但还没设密码」：设完密码后顺手把指纹一起打开（v1.9.0 / PRD 6）
+    var pendingBiometric by remember { mutableStateOf(false) }
     // 设备是否已录入指纹/面容：没录入时开关置灰，避免「打开了却永远弹不出来」
     val context = LocalContext.current
     val biometricReady = remember(context) { BiometricAvailability.hasEnrolledBiometric(context) }
@@ -174,18 +176,33 @@ fun SettingsScreen(
                     if (on) pinDialog = PinDialogMode.CREATE else viewModel.disableAppLock()
                 }
             }
-            if (state.prefs.appLockEnabled) {
-                item {
-                    // 指纹开关（v1.8.1 #7）：以前设置里只有「改密码」，锁屏那个「改用指纹」
-                    // 按钮等于藏起来了。开启后锁定时会自动拉起系统指纹弹窗。
-                    SwitchSetting(
-                        title = "指纹 / 面容解锁",
-                        checked = state.prefs.biometricEnabled,
-                        tag = "switch_biometric",
-                        subtitle = if (biometricReady) "锁定后自动弹出指纹，失败可改用密码" else "未检测到已录入的指纹或面容",
-                        enabled = biometricReady,
-                    ) { on -> viewModel.setBiometricEnabled(on) }
+            item {
+                // 指纹开关（v1.9.0 / PRD 6）：以前整行被包在 `if (appLockEnabled)` 里，
+                // 而应用锁默认是关的，于是用户根本看不到这个开关。
+                // 现在常驻显示：没开应用锁时打开指纹，先引导设置密码、自动开启应用锁。
+                SwitchSetting(
+                    title = "指纹 / 面容解锁",
+                    checked = state.prefs.biometricEnabled,
+                    tag = "switch_biometric",
+                    subtitle =
+                        when {
+                            !biometricReady -> "未检测到已录入的指纹或面容，请先在系统设置中录入"
+                            state.prefs.biometricEnabled -> "锁定时自动弹出指纹，失败可改用密码"
+                            !state.prefs.appLockEnabled -> "打开后会先要求设置应用锁密码"
+                            else -> "开启后锁定时自动弹出指纹"
+                        },
+                    enabled = biometricReady,
+                ) { on ->
+                    if (on && !state.prefs.appLockEnabled) {
+                        // 先记下意图，设完密码再把指纹一并打开，避免用户点两次
+                        pendingBiometric = true
+                        pinDialog = PinDialogMode.CREATE
+                    } else {
+                        viewModel.setBiometricEnabled(on)
+                    }
                 }
+            }
+            if (state.prefs.appLockEnabled) {
                 item {
                     RowSetting("修改密码", "") { pinDialog = PinDialogMode.CHANGE }
                 }
@@ -205,14 +222,21 @@ fun SettingsScreen(
     when (pinDialog) {
         PinDialogMode.CREATE ->
             PinDialog(
-                title = "设置应用锁密码",
+                title = if (pendingBiometric) "先设置应用锁密码" else "设置应用锁密码",
                 fields = listOf("密码（4~8 位数字）", "再输一次"),
-                onDismiss = { pinDialog = PinDialogMode.HIDDEN },
+                onDismiss = {
+                    pendingBiometric = false
+                    pinDialog = PinDialogMode.HIDDEN
+                },
             ) { values ->
                 if (values[0] != values[1]) {
                     viewModel.setPinMismatch()
                 } else {
                     viewModel.enableAppLock(values[0])
+                    if (pendingBiometric) {
+                        viewModel.setBiometricEnabled(true)
+                        pendingBiometric = false
+                    }
                     pinDialog = PinDialogMode.HIDDEN
                 }
             }

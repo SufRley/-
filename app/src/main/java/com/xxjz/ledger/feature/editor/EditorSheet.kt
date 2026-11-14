@@ -158,7 +158,7 @@ fun EditorSheet(
             if (state.type == TxnType.DEBT && state.debtAccounts.isEmpty()) {
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "还没有${if (state.debtDirection == DebtDirection.LEND) "我借出" else "我借入"}的借贷账户",
+                    text = "还没有借贷账户，先建一个人的账户再记账",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -347,7 +347,7 @@ private fun EditorPickDialogs(
         AccountPickerDialog(
             accounts = state.debtAccounts,
             selectedId = state.debtAccountId,
-            title = if (state.debtDirection == DebtDirection.LEND) "我借给谁" else "我向谁借",
+            title = "选择对方账户",
             onSelect = {
                 viewModel.selectDebtAccount(it)
                 close(Pick.DEBT_ACCOUNT)
@@ -358,7 +358,6 @@ private fun EditorPickDialogs(
 
     if (show.newDebt) {
         NewDebtAccountDialog(
-            direction = state.debtDirection,
             value = newDebtName,
             onValueChange = onNewDebtNameChange,
             onConfirm = {
@@ -558,7 +557,10 @@ private fun Keypad(
     }
 }
 
-/** 借贷方向切换（v1.9.0）：先定方向，再谈人名，避免「同一个人既能借出又能借入」的混乱。 */
+/**
+ * 借贷动作切换（v1.9.0 净值模型）：只决定这一笔是借出还是借入，
+ * 不再限制能挑哪个人的账户——同一个人借出去的钱和欠下的钱记在同一个账户上。
+ */
 @Composable
 private fun DebtDirectionSwitch(
     current: DebtDirection,
@@ -599,7 +601,6 @@ private fun DebtDirectionSwitch(
 /** 记账面板内一键新建借贷账户（PRD 8.3）：只填人名，本金在金额区填。 */
 @Composable
 private fun NewDebtAccountDialog(
-    direction: DebtDirection,
     value: String,
     onValueChange: (String) -> Unit,
     onConfirm: () -> Unit,
@@ -609,7 +610,7 @@ private fun NewDebtAccountDialog(
         Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.padding(20.dp)) {
                 Text(
-                    text = if (direction == DebtDirection.LEND) "新建「我借出」账户" else "新建「我借入」账户",
+                    text = "新建借贷账户",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )

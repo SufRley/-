@@ -608,6 +608,37 @@ class AccountRepositoryImpl
                 }
             }
         }
+
+        /**
+         * 借贷账户合并（v1.9.0）：把源账户的流水整体改挂到目标账户。
+         *
+         * 借贷流水的 `accountId` 指借贷账户、`toAccountId` 指资金账户，
+         * 所以只改 `accountId`，不能顺手把 `toAccountId` 也改——那会把资金账户改成借贷账户。
+         */
+        override suspend fun moveTxnsTo(
+            fromId: String,
+            toId: String,
+            at: Long,
+        ) {
+            if (fromId == toId) return
+            val rows = txnDao.listByAccount(fromId)
+            if (rows.isEmpty()) return
+            db.withTransaction {
+                rows.forEach { row ->
+                    val next =
+                        when {
+                            // from 出现在 accountId：借贷账户 / 付款账户
+                            row.accountId == fromId && row.toAccountId == fromId ->
+                                row.copy(accountId = toId, toAccountId = toId, updatedAt = at)
+                            row.accountId == fromId -> row.copy(accountId = toId, updatedAt = at)
+                            // from 只出现在 toAccountId：收入 / 转入 / 借贷资金侧
+                            row.toAccountId == fromId -> row.copy(toAccountId = toId, updatedAt = at)
+                            else -> row
+                        }
+                    if (next != row) txnDao.update(next)
+                }
+            }
+        }
     }
 
 @Singleton

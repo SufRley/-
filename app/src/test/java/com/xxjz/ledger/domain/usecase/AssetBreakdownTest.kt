@@ -38,17 +38,55 @@ class AssetBreakdownTest {
     )
 
     @Test
-    fun assetsSplitIntoThreeSlices() {
+    fun assetsSplitPerAccount() {
+        // v1.9.0（PRD 5）：按单个账户拆段，不再是「现金/储蓄卡/投资/借出款」四桶
         val breakdown =
             BreakdownCalculator.assets(
                 listOf(
-                    account("cash", AccountType.CASH, balance = 1_000_00),
-                    account("sav", AccountType.SAVINGS, balance = 2_000_00),
-                    account("inv", AccountType.INVEST, balance = 9_999_00, market = 3_000_00),
+                    account("现金", AccountType.CASH, balance = 1_000_00),
+                    account("Q卡", AccountType.SAVINGS, balance = 2_000_00),
+                    account("基金", AccountType.INVEST, balance = 9_999_00, market = 3_000_00),
                 ),
             )
-        assertEquals(listOf(1_000_00L, 2_000_00L, 3_000_00L, 0L), breakdown.slices.map { it.amount }, "v1.9.0 起多了「借出款」一段，为零时也占位")
+        assertEquals(listOf("现金", "Q卡", "基金"), breakdown.slices.map { it.label })
+        assertEquals(listOf(1_000_00L, 2_000_00L, 3_000_00L), breakdown.slices.map { it.amount })
         assertEquals(6_000_00L, breakdown.total, "投资按市值计，不叠加余额")
+    }
+
+    @Test
+    fun twoSavingCardsAreTwoSlices() {
+        // PRD 5.1 的原话：Q 银行卡和 W 银行卡必须分开列
+        val breakdown =
+            BreakdownCalculator.assets(
+                listOf(
+                    account("Q卡", AccountType.SAVINGS, balance = 1_000_00),
+                    account("W卡", AccountType.SAVINGS, balance = 500_00),
+                ),
+            )
+        assertEquals(listOf("Q卡", "W卡"), breakdown.slices.map { it.label })
+        assertEquals(1_500_00L, breakdown.total)
+    }
+
+    @Test
+    fun tooManyAccountsFoldIntoOther() {
+        // 9 个账户 → 前 7 大单列 + 「其他」，共 8 段
+        val accounts =
+            (1..9).map { i ->
+                account("卡$i", AccountType.SAVINGS, balance = (10 - i).toLong() * 100_00)
+            }
+        val breakdown = BreakdownCalculator.assets(accounts)
+        assertEquals(BreakdownCalculator.MAX_SLICES, breakdown.slices.size)
+        assertEquals("其他", breakdown.slices.last().label, "「其他」永远排最后")
+        assertEquals(accounts.sumOf { it.balance }, breakdown.total, "折叠不能改变总额")
+        assertEquals(100_00L + 200_00L, breakdown.slices.last().amount, "最小的两个账户（100、200）被折叠")
+    }
+
+    @Test
+    fun exactlyEightAccountsNotFolded() {
+        val accounts = (1..8).map { account("卡$it", AccountType.SAVINGS, balance = it.toLong() * 100_00) }
+        val breakdown = BreakdownCalculator.assets(accounts)
+        assertEquals(8, breakdown.slices.size)
+        assertFalse(breakdown.slices.any { it.label == "其他" })
     }
 
     @Test
@@ -83,7 +121,7 @@ class AssetBreakdownTest {
             BreakdownCalculator.assets(
                 listOf(account("credit", AccountType.CREDIT, balance = 300_00)),
             )
-        assertEquals(300_00L, breakdown.slices.first { it.label == "储蓄卡" }.amount)
+        assertEquals(300_00L, breakdown.slices.single { it.label == "credit" }.amount, "标签用账户名，不并进储蓄卡")
     }
 
     @Test
@@ -97,9 +135,8 @@ class AssetBreakdownTest {
                     account("lend", AccountType.DEBT, balance = 800_00),
                 ),
             )
-        assertEquals(2_000_00L, liability.slices.first { it.label == "信用欠款" }.amount)
-        assertEquals(500_00L, liability.slices.first { it.label == "借入款" }.amount)
-        assertEquals(0L, liability.slices.first { it.label == "储蓄卡透支" }.amount)
+        assertEquals(2_000_00L, liability.slices.first { it.label == "credit" }.amount)
+        assertEquals(500_00L, liability.slices.first { it.label == "credit2" }.amount)
         assertEquals(2_500_00L, liability.total, "被借出去的钱是资产，不是负债")
     }
 
@@ -115,8 +152,13 @@ class AssetBreakdownTest {
     @Test
     fun zeroSlicesAreDroppedForChart() {
         val breakdown =
-            BreakdownCalculator.assets(listOf(account("cash", AccountType.CASH, balance = 100_00)))
-        assertEquals(1, breakdown.nonZero.size, "0 元段不画饼图")
+            BreakdownCalculator.assets(
+                listOf(
+                    account("现金", AccountType.CASH, balance = 100_00),
+                    account("空卡", AccountType.SAVINGS, balance = 0),
+                ),
+            )
+        assertEquals(1, breakdown.nonZero.size, "0 元账户不画饼图")
         assertEquals(listOf("现金"), breakdown.nonZero.map { it.label })
     }
 

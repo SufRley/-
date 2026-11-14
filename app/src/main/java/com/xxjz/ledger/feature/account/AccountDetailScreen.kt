@@ -81,6 +81,8 @@ fun AccountDetailScreen(
     // 分期 / 还款弹窗（v1.9.0 信用账户）
     var showInstallment by remember { mutableStateOf(false) }
     var showRepayBill by remember { mutableStateOf(false) }
+    // 合并到其他借贷账户（v1.9.0 / PRD 3.4）
+    var showMerge by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.message.collect { snackbar.showSnackbar(it) }
@@ -93,6 +95,15 @@ fun AccountDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("account_detail_back")) {
                         Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    // 借贷账户才给合并入口：历史数据里同一个人可能被建成了两个账户
+                    if (state.account?.type == AccountType.DEBT && state.mergeTargets.isNotEmpty()) {
+                        TextButton(
+                            onClick = { showMerge = true },
+                            modifier = Modifier.testTag("account_merge"),
+                        ) { Text("合并到…") }
                     }
                 },
             )
@@ -167,7 +178,7 @@ fun AccountDetailScreen(
     debtOp?.let { action ->
         DebtOpDialog(
             action = action,
-            maxCents = kotlin.math.abs(state.account?.balance ?: 0),
+            remainingCents = remainingFor(action, state.account?.balance ?: 0),
             fundAccounts = state.fundAccounts,
             onDismiss = { debtOp = null },
             onConfirm = { cents, fundId ->
@@ -209,13 +220,25 @@ fun AccountDetailScreen(
     state.bill?.takeIf { showRepayBill }?.let { bill ->
         DebtOpDialog(
             action = DebtAction.REPAY,
-            // 还款上限取本期应还；已超额时至少允许还 1 元
-            maxCents = maxOf(bill.dueCents, 1_00L),
+            // 只用于提示本期应还，不设上限
+            remainingCents = bill.dueCents,
             fundAccounts = state.fundAccounts,
             onDismiss = { showRepayBill = false },
             onConfirm = { cents, fundId ->
                 viewModel.repayBill(cents, fundId)
                 showRepayBill = false
+            },
+        )
+    }
+
+    if (showMerge) {
+        MergeTargetDialog(
+            current = state.account,
+            targets = state.mergeTargets,
+            onDismiss = { showMerge = false },
+            onConfirm = { targetId ->
+                viewModel.mergeInto(targetId)
+                showMerge = false
             },
         )
     }
@@ -300,7 +323,9 @@ private fun AccountSummaryCard(
                     Spacer(Modifier.height(12.dp))
                     DebtSummary(
                         account = debt,
+                        onLendOut = { onDebtOp(DebtAction.LEND_OUT) },
                         onCollect = { onDebtOp(DebtAction.COLLECT) },
+                        onBorrow = { onDebtOp(DebtAction.BORROW_IN) },
                         onRepay = { onDebtOp(DebtAction.REPAY) },
                         onWriteOff = onWriteOff,
                     )
@@ -437,23 +462,33 @@ private fun typeText(type: TxnType): String =
     }
 
 /**
- * 借贷账户摘要（v1.9.0 / PRD 2.5）。
+ * 借贷账户摘要（v1.9.0 / PRD 3 / 净值模型）。
  *
- * 只显示当前方向允许的那一个动作：「我借出」只有收款，「我借入」只有还款。
- * 坏账核销只对「我借出」开放——「我借入」核销等于凭空虚增净资产。
+ * 一人一账户，余额符号即方向：正数待收、负数待还、零已结清。
+ * 四个动作常驻（借出 / 收款 / 借入 / 还款），随时可在同一账户上记任意一笔；
+ * 坏账核销只对「待收」开放——待还时核销等于凭空虚增净资产。
  */
 @Composable
 private fun DebtSummary(
     account: Account,
+    onLendOut: () -> Unit,
     onCollect: () -> Unit,
+    onBorrow: () -> Unit,
     onRepay: () -> Unit,
     onWriteOff: () -> Unit,
 ) {
+    val balance = account.balance
     Column(Modifier.testTag("debt_summary")) {
         Text(
-            text = if (account.isLending) "我借出 · 对方欠我" else "我借入 · 我欠对方",
+            text =
+                when {
+                    balance > 0 -> "待收 · 对方欠我"
+                    balance < 0 -> "待还 · 我欠对方"
+                    else -> "已结清"
+                },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("debt_state_text"),
         )
         account.dueAt?.let {
             Text(
@@ -472,51 +507,59 @@ private fun DebtSummary(
         }
         Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (account.isLending) {
-                Button(onClick = onCollect, modifier = Modifier.testTag("debt_collect")) { Text("收款") }
-                OutlinedButton(onClick = onWriteOff, modifier = Modifier.testTag("debt_write_off")) { Text("坏账核销") }
-            } else {
-                Button(onClick = onRepay, modifier = Modifier.testTag("debt_repay")) { Text("还款") }
+            OutlinedButton(onClick = onLendOut, modifier = Modifier.testTag("debt_lend_out")) { Text("借出") }
+            OutlinedButton(onClick = onBorrow, modifier = Modifier.testTag("debt_borrow")) { Text("借入") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            Button(onClick = onCollect, modifier = Modifier.testTag("debt_collect")) { Text("收款") }
+            Button(onClick = onRepay, modifier = Modifier.testTag("debt_repay")) { Text("还款") }
+            if (balance > 0) {
+                TextButton(onClick = onWriteOff, modifier = Modifier.testTag("debt_write_off")) { Text("坏账核销") }
             }
         }
     }
 }
 
-/** 收款 / 还款弹窗：金额 + 资金账户。金额上限由待收 / 待还决定。 */
+/**
+ * 借贷动作弹窗：金额 + 资金账户。
+ *
+ * v1.9.0 净值模型下不再限制金额上限——余额符号由流水自然翻转，
+ * 「收多了」就变成我欠对方，无需拦截。
+ */
 @Composable
 private fun DebtOpDialog(
     action: DebtAction,
-    maxCents: Long,
+    remainingCents: Long,
     fundAccounts: List<Account>,
     onDismiss: () -> Unit,
     onConfirm: (Long, String) -> Unit,
 ) {
-    val collect = action == DebtAction.COLLECT
     var text by remember { mutableStateOf("") }
     var fundId by remember { mutableStateOf(fundAccounts.firstOrNull()?.id) }
     val cents = MoneyFormatter.yuanToCents(text) ?: 0L
-    val invalid = cents <= 0L || cents > maxCents || fundId == null
+    val label = debtActionText(action) ?: "记账"
+    val incoming = action == DebtAction.COLLECT || action == DebtAction.BORROW_IN
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (collect) "收款" else "还款") },
+        title = { Text(label) },
         text = {
             Column {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it.filter { c -> c.isDigit() || c == '.' }.take(14) },
-                    label = { Text(if (collect) "收款金额" else "还款金额") },
+                    label = { Text("${label}金额") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth().testTag("debt_amount_input"),
                 )
                 Text(
-                    text = "最多可${if (collect) "收" else "还"} ¥${MoneyFormatter.centsToYuan(maxCents)}",
+                    text = remainingHint(action, remainingCents),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
                 Spacer(Modifier.height(10.dp))
-                Text(if (collect) "收到哪个账户" else "从哪个账户出", style = MaterialTheme.typography.bodySmall)
+                Text(if (incoming) "进入哪个账户" else "从哪个账户出", style = MaterialTheme.typography.bodySmall)
                 fundAccounts.forEach { account ->
                     Row(
                         Modifier
@@ -535,13 +578,36 @@ private fun DebtOpDialog(
         confirmButton = {
             TextButton(
                 onClick = { fundId?.let { onConfirm(cents, it) } },
-                enabled = !invalid,
+                enabled = cents > 0L && fundId != null,
                 modifier = Modifier.testTag("debt_op_confirm"),
             ) { Text("确认") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )
 }
+
+/** 弹窗副标题：只做提示，不做拦截。 */
+private fun remainingHint(
+    action: DebtAction,
+    remaining: Long,
+): String =
+    when {
+        remaining <= 0L -> "该账户当前没有${if (action == DebtAction.COLLECT) "待收" else "待还"}，记完会自动反向"
+        action == DebtAction.COLLECT -> "当前待收 ¥${MoneyFormatter.centsToYuan(remaining)}"
+        action == DebtAction.REPAY -> "当前待还 ¥${MoneyFormatter.centsToYuan(remaining)}"
+        else -> "金额不限，净值自动结算"
+    }
+
+/** 余额正为待收、负为待还，取对应侧供提示用。 */
+private fun remainingFor(
+    action: DebtAction,
+    balance: Long,
+): Long =
+    when (action) {
+        DebtAction.COLLECT -> balance.coerceAtLeast(0L)
+        DebtAction.REPAY -> (-balance).coerceAtLeast(0L)
+        else -> 0L
+    }
 
 /** 借贷流水的副标题：优先显示动作，让「一笔借出」和「一笔收款」在列表里能分清。 */
 private fun debtActionText(action: DebtAction?): String? =
@@ -756,6 +822,83 @@ private fun InstallmentDialog(
                 enabled = periodsOk && principalOk && (wholeBill || pickedTxnId != null),
                 modifier = Modifier.testTag("inst_confirm"),
             ) { Text("确认分期") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+/**
+ * 合并借贷账户（v1.9.0 / PRD 3.4）。
+ *
+ * 弹窗里直接展示「合并后余额」，因为净值模型下合并的意义就是净值相加：
+ * 一个待收 500、一个待还 200，合起来就是待收 300。
+ */
+@Composable
+private fun MergeTargetDialog(
+    current: Account?,
+    targets: List<Account>,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var selectedId by remember { mutableStateOf(targets.firstOrNull()?.id) }
+    val target = targets.firstOrNull { it.id == selectedId }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("合并到其他借贷账户") },
+        text = {
+            Column {
+                Text(
+                    text = "当前账户「${current?.name.orEmpty()}」的流水会整体挂到目标账户，然后当前账户进回收站。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                targets.forEach { account ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedId = account.id }
+                            .padding(vertical = 8.dp)
+                            .testTag("merge_target_${account.id}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = selectedId == account.id, onClick = { selectedId = account.id })
+                        Column(Modifier.weight(1f)) {
+                            Text(account.name, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                text =
+                                    "当前余额 ¥${MoneyFormatter.centsToYuan(kotlin.math.abs(account.balance))}" +
+                                        if (account.balance >= 0) "（待收）" else "（待还）",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+                if (target != null) {
+                    Spacer(Modifier.height(8.dp))
+                    val merged = (current?.balance ?: 0L) + target.balance
+                    Text(
+                        text =
+                            "合并后：${target.name} ¥${MoneyFormatter.centsToYuan(kotlin.math.abs(merged))}" +
+                                when {
+                                    merged > 0 -> "（待收）"
+                                    merged < 0 -> "（待还）"
+                                    else -> "（已结清）"
+                                },
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.testTag("merge_preview"),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { selectedId?.let(onConfirm) },
+                enabled = selectedId != null,
+                modifier = Modifier.testTag("merge_confirm"),
+            ) { Text("合并") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
     )

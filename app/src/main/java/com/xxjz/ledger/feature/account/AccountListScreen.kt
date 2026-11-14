@@ -38,13 +38,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -89,88 +87,79 @@ fun AccountListScreen(
 
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("账户") },
-                navigationIcon = {
-                    if (isRootTab) {
-                        IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
-                            Icon(Icons.Outlined.Menu, contentDescription = "菜单")
-                        }
-                    } else {
-                        IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
-                            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
-                        }
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onOpenAssetReport, modifier = Modifier.testTag("account_report")) {
-                        Icon(Icons.Outlined.Insights, contentDescription = "资产报表")
-                    }
-                    IconButton(onClick = { creating = true }, modifier = Modifier.testTag("account_add")) {
-                        Icon(Icons.Outlined.Add, contentDescription = "新建账户")
-                    }
-                },
+    // v1.9.0（PRD 第 2 条）：去掉 Scaffold + TopAppBar，改成和明细 / 报表同款的紧凑 Row 头部。
+    // 原来 TopAppBar 自带 64dp 高 + 状态栏 inset，比另两个 Tab 高出一截，视觉上像「上空了一块」。
+    // 账户页不需要时间，中间只放标题。
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            AccountHeader(
+                title = "账户",
+                isRootTab = isRootTab,
+                onMenu = onMenu,
+                onBack = onBack,
+                onOpenAssetReport = onOpenAssetReport,
+                onCreate = { creating = true },
             )
-        },
-        snackbarHost = { SnackbarHost(snackbar) },
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
-            EntryCards(
-                reimbursement = state.reimbursement,
-                onOpenReimbursement = onOpenReimbursement,
-            )
-            AssetCard(
-                assets = state.summary.assets,
-                liabilities = state.summary.liabilities,
-                net = state.summary.net,
-            )
-            if (state.groups.isEmpty() && !state.loading) {
-                EmptyState(
-                    title = "还没有账户",
-                    description = "先建一个现金或储蓄卡账户，就能开始记账了",
-                    actionText = "新建账户",
-                    onAction = { creating = true },
-                    modifier = Modifier.fillMaxWidth().height(300.dp),
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                EntryCards(
+                    reimbursement = state.reimbursement,
+                    onOpenReimbursement = onOpenReimbursement,
                 )
-            }
-            state.groups.forEach { group ->
-                GroupHeader(group = group, onToggle = { viewModel.toggleGroup(group.type) })
-                if (!group.collapsed) {
-                    group.accounts.forEach { account ->
-                        AccountRow(
-                            account = account,
-                            onClick = { onOpen(account.id) },
-                            onEdit = { editing = account },
-                            onToggleHidden = { viewModel.setHidden(account.id, true) },
-                            onDelete = { deleting = account },
-                        )
+                AssetCard(
+                    assets = state.summary.assets,
+                    liabilities = state.summary.liabilities,
+                    net = state.summary.net,
+                )
+                if (state.groups.isEmpty() && !state.loading) {
+                    EmptyState(
+                        title = "还没有账户",
+                        description = "先建一个现金或储蓄卡账户，就能开始记账了",
+                        actionText = "新建账户",
+                        onAction = { creating = true },
+                        modifier = Modifier.fillMaxWidth().height(300.dp),
+                    )
+                }
+                state.groups.forEach { group ->
+                    GroupHeader(group = group, onToggle = { viewModel.toggleGroup(group.type) })
+                    if (!group.collapsed) {
+                        group.accounts.forEach { account ->
+                            AccountRow(
+                                account = account,
+                                onClick = { onOpen(account.id) },
+                                onEdit = { editing = account },
+                                onToggleHidden = { viewModel.setHidden(account.id, true) },
+                                onDelete = { deleting = account },
+                            )
+                        }
                     }
                 }
-            }
-            if (state.hidden.isNotEmpty()) {
-                TextButton(
-                    onClick = viewModel::toggleShowHidden,
-                    modifier = Modifier.padding(horizontal = 8.dp).testTag("toggle_hidden"),
-                ) {
-                    Text(if (state.showHidden) "收起已隐藏账户" else "已隐藏账户（${state.hidden.size}）")
-                }
-                if (state.showHidden) {
-                    state.hidden.forEach { account ->
-                        AccountRow(
-                            account = account,
-                            onClick = { onOpen(account.id) },
-                            onEdit = { editing = account },
-                            onToggleHidden = { viewModel.setHidden(account.id, false) },
-                            onDelete = { deleting = account },
-                            hiddenLabel = true,
-                        )
+                if (state.hidden.isNotEmpty()) {
+                    TextButton(
+                        onClick = viewModel::toggleShowHidden,
+                        modifier = Modifier.padding(horizontal = 8.dp).testTag("toggle_hidden"),
+                    ) {
+                        Text(if (state.showHidden) "收起已隐藏账户" else "已隐藏账户（${state.hidden.size}）")
+                    }
+                    if (state.showHidden) {
+                        state.hidden.forEach { account ->
+                            AccountRow(
+                                account = account,
+                                onClick = { onOpen(account.id) },
+                                onEdit = { editing = account },
+                                onToggleHidden = { viewModel.setHidden(account.id, false) },
+                                onDelete = { deleting = account },
+                                hiddenLabel = true,
+                            )
+                        }
                     }
                 }
+                Spacer(Modifier.height(40.dp))
             }
-            Spacer(Modifier.height(40.dp))
         }
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp),
+        )
     }
 
     if (creating || editing != null) {
@@ -204,11 +193,47 @@ fun AccountListScreen(
 }
 
 /**
- * 待报销入口卡（v1.9.0）。
+ * 账户页头部（v1.9.0 / PRD 第 2 条）：与 [MonthHeader] / [WindowHeader] 同款紧凑 Row。
  *
- * v1.8.0 这里是「待报销 / 借贷台账」两张并排；v1.9.0 借贷改成一人一账户后，
- * 台账页消失，账户分组本身就是入口，卡片只剩一张（PRD 2.5）。
+ * 高度、内边距、图标按钮尺寸都和另两个主 Tab 对齐，切 Tab 时内容起始位置不再跳动。
  */
+@Composable
+private fun AccountHeader(
+    title: String,
+    isRootTab: Boolean,
+    onMenu: () -> Unit,
+    onBack: () -> Unit,
+    onOpenAssetReport: () -> Unit,
+    onCreate: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (isRootTab) {
+            IconButton(onClick = onMenu, modifier = Modifier.testTag("menu_entry")) {
+                Icon(Icons.Outlined.Menu, contentDescription = "菜单")
+            }
+        } else {
+            IconButton(onClick = onBack, modifier = Modifier.testTag("account_back")) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+            }
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f).padding(start = 8.dp),
+        )
+        IconButton(onClick = onOpenAssetReport, modifier = Modifier.testTag("account_report")) {
+            Icon(Icons.Outlined.Insights, contentDescription = "资产报表")
+        }
+        IconButton(onClick = onCreate, modifier = Modifier.testTag("account_add")) {
+            Icon(Icons.Outlined.Add, contentDescription = "新建账户")
+        }
+    }
+}
+
 @Composable
 private fun EntryCards(
     reimbursement: EntryCardState,
@@ -368,7 +393,17 @@ private fun AccountRow(
                 }
             }
             Text(
-                text = typeLabel(account.type),
+                // 借贷账户直接标出符号含义：正数待收、负数待还、零已结清（v1.9.0 净值模型）
+                text =
+                    if (account.type == AccountType.DEBT) {
+                        when {
+                            account.balance > 0 -> "借贷 · 待收"
+                            account.balance < 0 -> "借贷 · 待还"
+                            else -> "借贷 · 已结清"
+                        }
+                    } else {
+                        typeLabel(account.type)
+                    },
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -377,6 +412,12 @@ private fun AccountRow(
             text = "¥${MoneyFormatter.centsToYuan(account.balance)}",
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
+            color =
+                if (account.type == AccountType.DEBT && account.balance < 0) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
         )
         Box {
             IconButton(onClick = { menu = true }) {

@@ -12,7 +12,6 @@ import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -22,7 +21,7 @@ import org.junit.jupiter.api.Test
 /**
  * v1.9.0 借贷重构（PRD 2.2 / 2.3 / 2.5）。
  *
- * 核心口径：一个借贷账户 = 一个人，方向建账户时锁定；
+ * 核心口径（v1.9.0 净值模型）：一个借贷账户 = 一个人 = 一本流水账，方向由余额符号表达；
  * 四种操作（借出 / 收款 / 借入 / 还款）**都不改变净资产**，只有坏账核销会减。
  */
 @DisplayName("借贷用例")
@@ -37,6 +36,7 @@ class DebtUseCasesTest {
     private val recordOp = RecordDebtOpUseCase(accountRepo, txnRepo)
     private val saveAccount = SaveDebtAccountUseCase(accountRepo, recordOp)
     private val writeOff = WriteOffDebtUseCase(accountRepo, recordOp)
+    private val mergeAccounts = MergeDebtAccountUseCase(accountRepo)
 
     /**
      * 现金 10000 元，作为所有数例的起点。
@@ -63,7 +63,8 @@ class DebtUseCasesTest {
             saveAccount(
                 DebtAccountDraft(
                     counterparty = if (direction == DebtDirection.LEND) "小王" else "老李",
-                    direction = direction,
+                    firstAction =
+                        if (direction == DebtDirection.LEND) DebtAction.LEND_OUT else DebtAction.BORROW_IN,
                     principalCents = principal,
                     fundAccountId = if (principal > 0) "cash" else null,
                 ),
@@ -101,9 +102,9 @@ class DebtUseCasesTest {
             assertEquals(-1_000_00, cashBalance())
 
             val account = accountRepo.items[id]!!
-            assertTrue(account.isLending)
-            assertFalse(account.isBorrowing)
             assertEquals("小王", account.name)
+            // 净值模型：方向只由余额符号表达
+            assertTrue(debtBalance(id) > 0, "借出后余额为正 = 待收")
         }
 
     @Test
@@ -113,7 +114,7 @@ class DebtUseCasesTest {
             val id = newDebt(DebtDirection.BORROW, principal = 1_000_00)
             assertEquals(-1_000_00, debtBalance(id))
             assertEquals(1_000_00, cashBalance())
-            assertTrue(accountRepo.items[id]!!.isBorrowing)
+            assertTrue(debtBalance(id) < 0, "借入后余额为负 = 待还")
         }
 
     @Test
@@ -162,30 +163,36 @@ class DebtUseCasesTest {
         }
 
     @Test
-    @DisplayName("方向锁定：借出账户不能记借入/还款，借入账户不能记借出/收款")
-    fun directionLocked() =
+    @DisplayName("净值模型：一个账户可以记全部四种动作，余额符号随流水翻转")
+    fun allFourActionsOnOneAccount() =
         runTest {
-            val lend = newDebt(DebtDirection.LEND)
-            val borrow = newDebt(DebtDirection.BORROW)
+            val id = newDebt(DebtDirection.LEND)
 
-            val a = recordOp(DebtOpDraft(DebtAction.BORROW_IN, lend, "cash", 100_00))
-            assertEquals("「小王」是「我借出」账户，只能记借出和收款", (a as AppResult.Failure).error.message)
+            // 借出 300 → 待收 300
+            recordOp(DebtOpDraft(DebtAction.LEND_OUT, id, "cash", 300_00))
+            assertEquals(300_00, debtBalance(id))
 
-            val b = recordOp(DebtOpDraft(DebtAction.COLLECT, borrow, "cash", 100_00))
-            assertEquals("「老李」是「我借入」账户，只能记借入和还款", (b as AppResult.Failure).error.message)
+            // 又借入 500 → 净值 -200，从「待收」翻成「待还」
+            recordOp(DebtOpDraft(DebtAction.BORROW_IN, id, "cash", 500_00))
+            assertEquals(-200_00, debtBalance(id))
+
+            // 还款 500 → 回到待收 300
+            recordOp(DebtOpDraft(DebtAction.REPAY, id, "cash", 500_00))
+            assertEquals(300_00, debtBalance(id))
+
+            // 收款 300 → 结清
+            recordOp(DebtOpDraft(DebtAction.COLLECT, id, "cash", 300_00))
+            assertEquals(0L, debtBalance(id))
         }
 
     @Test
-    @DisplayName("收款不能超过待收、还款不能超过待还")
-    fun overCollectAndOverRepay() =
+    @DisplayName("收款/还款不设上限：收多了就变成我欠对方")
+    fun overCollectFlipsToPayable() =
         runTest {
-            val lend = newDebt(DebtDirection.LEND, principal = 500_00)
-            val over = recordOp(DebtOpDraft(DebtAction.COLLECT, lend, "cash", 500_01))
-            assertTrue((over as AppResult.Failure).error.message!!.startsWith("收款金额不能超过待收"))
-
-            val borrow = newDebt(DebtDirection.BORROW, principal = 500_00)
-            val over2 = recordOp(DebtOpDraft(DebtAction.REPAY, borrow, "cash", 500_01))
-            assertTrue((over2 as AppResult.Failure).error.message!!.startsWith("还款金额不能超过待还"))
+            val id = newDebt(DebtDirection.LEND, principal = 500_00)
+            val over = recordOp(DebtOpDraft(DebtAction.COLLECT, id, "cash", 800_00))
+            assertTrue(over is AppResult.Success, "收款超额不再被拦")
+            assertEquals(-300_00, debtBalance(id))
         }
 
     @Test
@@ -232,12 +239,12 @@ class DebtUseCasesTest {
         }
 
     @Test
-    @DisplayName("借入方向不允许核销（否则净资产凭空虚增）")
+    @DisplayName("待还状态不允许核销（否则净资产凭空虚增）")
     fun writeOffBorrowRejected() =
         runTest {
             val id = newDebt(DebtDirection.BORROW, principal = 1_000_00)
             val result = writeOff(id)
-            assertEquals("只有「我借出」的账户可以做坏账核销", (result as AppResult.Failure).error.message)
+            assertEquals("该账户没有待收金额", (result as AppResult.Failure).error.message)
         }
 
     @Test
@@ -246,6 +253,50 @@ class DebtUseCasesTest {
         runTest {
             val id = newDebt(DebtDirection.LEND)
             assertEquals("该账户没有待收金额", (writeOff(id) as AppResult.Failure).error.message)
+        }
+
+    // ---------- 合并 ----------
+
+    @Test
+    @DisplayName("合并两个账户：净值相加，源账户进回收站")
+    fun mergeSumsNetBalance() =
+        runTest {
+            val a = newDebt(DebtDirection.LEND, principal = 500_00)
+            val b = newDebt(DebtDirection.LEND)
+            recordOp(DebtOpDraft(DebtAction.BORROW_IN, b, "cash", 200_00))
+
+            assertEquals(500_00, debtBalance(a))
+            assertEquals(-200_00, debtBalance(b))
+
+            val result = mergeAccounts(b, a)
+            assertTrue(result is AppResult.Success)
+            assertEquals(300_00, (result as AppResult.Success).data)
+            assertEquals(300_00, debtBalance(a))
+            // fake 的 byId 不看回收站标记，这里直接查软删表
+            assertTrue(accountRepo.deletedAt.containsKey(b), "源账户已进回收站")
+        }
+
+    @Test
+    @DisplayName("合并不改资金账户：借贷流水的 toAccountId 保持不变")
+    fun mergeKeepsFundSide() =
+        runTest {
+            val a = newDebt(DebtDirection.LEND)
+            val b = newDebt(DebtDirection.LEND)
+            val r = recordOp(DebtOpDraft(DebtAction.LEND_OUT, b, "cash", 100_00)) as AppResult.Success
+
+            mergeAccounts(b, a)
+            val txn = txnRepo.items[r.data]!!
+            assertEquals(a, txn.accountId)
+            assertEquals("cash", txn.toAccountId, "资金账户不能被改成借贷账户")
+        }
+
+    @Test
+    @DisplayName("合到自己 / 合并非借贷账户都被拒")
+    fun mergeValidation() =
+        runTest {
+            val a = newDebt(DebtDirection.LEND)
+            assertEquals("不能合并到自己", (mergeAccounts(a, a) as AppResult.Failure).error.message)
+            assertEquals("只能合并借贷账户", (mergeAccounts(a, "cash") as AppResult.Failure).error.message)
         }
 
     // ---------- 流水形态 ----------

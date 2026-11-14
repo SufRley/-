@@ -53,7 +53,10 @@ data class EditorUiState(
     /** 支出/收入/转账的账户；借贷类型下是**资金账户**（钱从谁那里进出）。 */
     val accountId: String? = null,
     val toAccountId: String? = null,
-    /** 借贷方向（v1.9.0），仅 [TxnType.DEBT] 使用，决定可选哪些借贷账户。 */
+    /**
+     * 借贷动作（v1.9.0 / PRD 3）：只决定这一次记的是借出还是借入，
+     * 不再限制账户可选范围——同一个人的账户可以借钱也可以还钱。
+     */
     val debtDirection: DebtDirection = DebtDirection.LEND,
     /** 借贷账户（对方）。 */
     val debtAccountId: String? = null,
@@ -79,13 +82,8 @@ data class EditorUiState(
 
     val debtAccountName: String? get() = accounts.firstOrNull { it.id == debtAccountId }?.name
 
-    /** 当前方向下可选的借贷账户：我借出只能挑「我借出」的人，反之亦然。 */
-    val debtAccounts: List<Account>
-        get() =
-            accounts.filter {
-                it.type == AccountType.DEBT &&
-                    (if (debtDirection == DebtDirection.LEND) it.isLending else it.isBorrowing)
-            }
+    /** 可选的借贷账户：全部借贷账户，不再按方向过滤（v1.9.0 净值模型）。 */
+    val debtAccounts: List<Account> get() = accounts.filter { it.type == AccountType.DEBT }
 
     /** 资金账户：借贷账户不能当资金账户，否则等于自己借给自己。 */
     val fundAccounts: List<Account> get() = accounts.filter { it.type != AccountType.DEBT }
@@ -252,16 +250,12 @@ class EditorViewModel
             }
         }
 
-        /** 切换借贷方向：已选的对方账户可能不属于新方向，一并清掉。 */
+        /**
+         * 切换借贷动作。v1.9.0 起对方账户不再按方向过滤，已选账户予以保留。
+         */
         fun setDebtDirection(direction: DebtDirection) {
             if (direction == _state.value.debtDirection) return
-            _state.update {
-                it.copy(
-                    debtDirection = direction,
-                    debtAccountId = null,
-                    dirty = true,
-                )
-            }
+            _state.update { it.copy(debtDirection = direction, dirty = true) }
         }
 
         fun selectDebtAccount(id: String) = _state.update { it.copy(debtAccountId = id, dirty = true) }
@@ -282,7 +276,12 @@ class EditorViewModel
                     saveDebtAccount(
                         DebtAccountDraft(
                             counterparty = trimmed,
-                            direction = _state.value.debtDirection,
+                            firstAction =
+                                if (_state.value.debtDirection == DebtDirection.LEND) {
+                                    DebtAction.LEND_OUT
+                                } else {
+                                    DebtAction.BORROW_IN
+                                },
                         ),
                     )
                 when (result) {

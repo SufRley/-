@@ -1,5 +1,6 @@
 package com.xxjz.ledger.ui.lock
 
+import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -34,6 +35,8 @@ interface LockSettingsEntryPoint {
     fun settings(): SettingsRepository
 }
 
+private const val TAG = "AppLockHost"
+
 /**
  * 把应用锁套在内容外面（AC-86）。
  *
@@ -51,8 +54,14 @@ fun AppLockHost(content: @Composable () -> Unit) {
     var state by remember { mutableStateOf(AppLockState()) }
     val scope = rememberCoroutineScope()
     val biometric =
-        remember {
+        remember(context) {
+            // 宿主必须是 FragmentActivity（MainActivity 已改），否则这里恒为 null，
+            // 后面那句 `?: return@LaunchedEffect` 会让指纹永远静默不弹（v1.9.0 修复）。
             (context as? FragmentActivity)?.let { AndroidBiometricGate(it) }
+                ?: run {
+                    Log.w(TAG, "宿主不是 FragmentActivity，指纹解锁不可用：${context.javaClass.name}")
+                    null
+                }
         }
 
     // 设置变了就同步到状态机（开启后立刻要求解锁）。
@@ -70,8 +79,13 @@ fun AppLockHost(content: @Composable () -> Unit) {
     }
     LaunchedEffect(state.locked, prefs?.biometricEnabled, prefs?.appLockEnabled) {
         val p = prefs ?: return@LaunchedEffect
-        val gate = biometric ?: return@LaunchedEffect
         if (!state.locked || !p.biometricEnabled || autoPrompted) return@LaunchedEffect
+        val gate = biometric
+        if (gate == null) {
+            // 指纹宿主真的不可用：落一句日志，用户至少还能用密码进
+            Log.w(TAG, "想自动弹指纹，但没有可用的 BiometricGate")
+            return@LaunchedEffect
+        }
         if (gate.availability() != BiometricAvailability.AVAILABLE) return@LaunchedEffect
         autoPrompted = true
         gate.authenticate(

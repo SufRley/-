@@ -3,11 +3,11 @@ package com.xxjz.ledger
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.xxjz.ledger.core.common.ShortcutAction
@@ -30,9 +30,13 @@ import javax.inject.Inject
  *
  * 桌面快捷方式（AC-84）通过 [ShortcutAction.EXTRA] 传递落点，只在冷启动/新 Intent 时消费一次，
  * 旋转屏幕等配置变更不会重复触发（否则每次转屏都会弹记账面板）。
+ *
+ * 必须继承 [FragmentActivity] 而不是 `ComponentActivity`：
+ * `AppLockHost` 靠 `context as? FragmentActivity` 才拿得到 BiometricPrompt 的宿主，
+ * 早先继承 ComponentActivity 时这个强转恒为 null，指纹开关开着也永远弹不出弹窗（v1.9.0 修复）。
  */
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     @Inject
     lateinit var settings: SettingsRepository
 

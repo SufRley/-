@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
+import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.DebtAction
@@ -20,6 +21,7 @@ import com.xxjz.ledger.domain.usecase.CreditBill
 import com.xxjz.ledger.domain.usecase.DebtOpDraft
 import com.xxjz.ledger.domain.usecase.GetCreditBillUseCase
 import com.xxjz.ledger.domain.usecase.InstallmentDraft
+import com.xxjz.ledger.domain.usecase.MergeDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
 import com.xxjz.ledger.domain.usecase.RepayCreditUseCase
 import com.xxjz.ledger.domain.usecase.WriteOffDebtUseCase
@@ -51,6 +53,8 @@ data class AccountDetailUiState(
     val rows: List<AccountTxnRow> = emptyList(),
     /** 借贷操作可选的资金账户（v1.9.0）：借贷账户不能当资金账户。 */
     val fundAccounts: List<Account> = emptyList(),
+    /** 可合并的目标借贷账户（v1.9.0 / PRD 3.4）：同类型的其他借贷账户。 */
+    val mergeTargets: List<Account> = emptyList(),
     /** 信用账户本期账单（v1.9.0 / PRD 3.4），非信用账户为 null。 */
     val bill: CreditBill? = null,
     /** 可选的单笔分期对象：本期未分期的消费。 */
@@ -77,6 +81,7 @@ class AccountDetailViewModel
         private val getCreditBill: GetCreditBillUseCase,
         private val createInstallment: CreateInstallmentUseCase,
         private val repayCredit: RepayCreditUseCase,
+        private val mergeDebtAccount: MergeDebtAccountUseCase,
     ) : ViewModel() {
         private val _message = MutableSharedFlow<String>(extraBufferCapacity = 4)
 
@@ -127,6 +132,12 @@ class AccountDetailViewModel
                             )
                         },
                     fundAccounts = accounts.filter { it.type != AccountType.DEBT && it.type != AccountType.CREDIT },
+                    mergeTargets =
+                        if (account?.type == AccountType.DEBT) {
+                            accounts.filter { it.type == AccountType.DEBT && it.id != accountId }
+                        } else {
+                            emptyList()
+                        },
                     bill = bill,
                     installmentCandidates = candidates,
                     loading = false,
@@ -166,7 +177,7 @@ class AccountDetailViewModel
                     )
                 _message.emit(
                     when (result) {
-                        is AppResult.Success -> "已${if (action == DebtAction.COLLECT) "收款" else "还款"}"
+                        is AppResult.Success -> "已记${RecordDebtOpUseCase.ACTION_LABELS[action].orEmpty()}"
                         is AppResult.Failure -> result.error.message
                     },
                 )
@@ -180,6 +191,23 @@ class AccountDetailViewModel
                 _message.emit(
                     when (result) {
                         is AppResult.Success -> "已核销坏账"
+                        is AppResult.Failure -> result.error.message
+                    },
+                )
+            }
+        }
+
+        /**
+         * 合并借贷账户（v1.9.0 / PRD 3.4）：把当前账户的流水并到 [targetId]，当前账户进回收站。
+         *
+         * 合并后余额为两边净值之和，符号自然体现谁欠谁。
+         */
+        fun mergeInto(targetId: String) {
+            viewModelScope.launch {
+                val result = mergeDebtAccount(accountId, targetId)
+                _message.emit(
+                    when (result) {
+                        is AppResult.Success -> "已合并，合并后余额 ¥${MoneyFormatter.centsToYuan(result.data)}"
                         is AppResult.Failure -> result.error.message
                     },
                 )

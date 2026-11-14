@@ -325,6 +325,16 @@ interface TxnDao {
     )
     suspend fun countByAccount(accountId: String): Int
 
+    /** 账户合并（v1.9.0）用：列出挂在某账户上的全部未删除流水。 */
+    @Query(
+        """
+        SELECT * FROM txn
+        WHERE deletedAt IS NULL AND (accountId = :accountId OR toAccountId = :accountId)
+        ORDER BY dateTime ASC, createdAt ASC
+        """,
+    )
+    suspend fun listByAccount(accountId: String): List<TxnEntity>
+
     @Query("UPDATE txn SET excludedFromStats = :excluded, updatedAt = :at WHERE id = :id")
     suspend fun setExcluded(
         id: String,

@@ -203,6 +203,18 @@ interface AccountRepository {
         marketValueCents: Long,
         at: Long,
     )
+
+    /**
+     * 把 [fromId] 的全部流水改挂到 [toId]（v1.9.0 借贷账户合并）。
+     *
+     * 只搬运、不删除：调用方确认搬完再决定是否处理源账户。
+     * 用于「同一个人被建成了两个账户」的手动合并。
+     */
+    suspend fun moveTxnsTo(
+        fromId: String,
+        toId: String,
+        at: Long,
+    )
 }
 
 /** 分类仓库。 */

@@ -37,6 +37,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +64,7 @@ import com.xxjz.ledger.core.ui.chart.toArgbLong
 import com.xxjz.ledger.domain.usecase.AssetChange
 import com.xxjz.ledger.domain.usecase.AssetChangeKind
 import com.xxjz.ledger.domain.usecase.AssetSlice
+import com.xxjz.ledger.domain.usecase.BreakdownCalculator
 import com.xxjz.ledger.domain.usecase.TrendPeriod
 import com.xxjz.ledger.domain.usecase.TrendPoint
 import kotlin.math.abs
@@ -85,6 +87,9 @@ fun AssetReportScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 每块至少半屏高：小屏上一屏放两块，大屏上留白而不是把内容拉伸变形
     val halfScreen = (LocalConfiguration.current.screenHeightDp / 2).dp
+    // 圆心显示模式由页面级持有，资产/负债两块共用一份（PRD 第 4 条：共用避免同屏两块不一致）
+    var center by remember { mutableStateOf(PieCenter.AMOUNT) }
+    var centerTouched by remember { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.fillMaxSize().testTag("screen_asset_report"),
@@ -115,8 +120,26 @@ fun AssetReportScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             NetWorthHeadline(net = state.net, assets = state.assets.total, liability = state.liability.total)
-            AssetPanel(state, halfScreen)
-            LiabilityPanel(state, halfScreen)
+            AssetPanel(
+                state = state,
+                minHeight = halfScreen,
+                center = center,
+                onToggleCenter = {
+                    center = if (center == PieCenter.AMOUNT) PieCenter.PERCENT else PieCenter.AMOUNT
+                    centerTouched = true
+                },
+                showHint = !centerTouched,
+            )
+            LiabilityPanel(
+                state = state,
+                minHeight = halfScreen,
+                center = center,
+                onToggleCenter = {
+                    center = if (center == PieCenter.AMOUNT) PieCenter.PERCENT else PieCenter.AMOUNT
+                    centerTouched = true
+                },
+                showHint = !centerTouched,
+            )
             TrendPanel(state, halfScreen, onPeriod = viewModel::setPeriod)
             ChangesPanel(state, halfScreen, onOpenTxn)
             Spacer(Modifier.height(16.dp))
@@ -225,6 +248,9 @@ private fun MiniAmount(
 private fun AssetPanel(
     state: AssetReportUiState,
     minHeight: Dp,
+    center: PieCenter,
+    onToggleCenter: () -> Unit,
+    showHint: Boolean,
 ) {
     val slices = state.assets.nonZero
     SectionPanel(
@@ -246,7 +272,14 @@ private fun AssetPanel(
                 EmptyState(title = "还没有资产", description = "新建账户并记上几笔账，这里就会显示构成占比")
             }
         } else {
-            BreakdownPie(slices = slices, total = state.assets.total, tag = "pie_assets")
+            BreakdownPie(
+                slices = slices,
+                total = state.assets.total,
+                tag = "pie_assets",
+                center = center,
+                onToggleCenter = onToggleCenter,
+                showToggleHint = showHint,
+            )
             if (state.assets.excludedInvest > 0) {
                 Spacer(Modifier.height(8.dp))
                 Text(
@@ -265,6 +298,9 @@ private fun AssetPanel(
 private fun LiabilityPanel(
     state: AssetReportUiState,
     minHeight: Dp,
+    center: PieCenter,
+    onToggleCenter: () -> Unit,
+    showHint: Boolean,
 ) {
     val slices = state.liability.nonZero
     SectionPanel(
@@ -290,32 +326,72 @@ private fun LiabilityPanel(
                 slices = slices,
                 total = state.liability.total,
                 tag = "pie_liability",
-                palette = listOf(LiabilityRed, Color(0xFFE08A5F), Color(0xFFB4568C)),
+                center = center,
+                onToggleCenter = onToggleCenter,
+                showToggleHint = showHint,
             )
         }
     }
 }
 
+/** 饼图圆心的显示模式（v1.9.0 / PRD 第 4 条）。 */
+private enum class PieCenter { AMOUNT, PERCENT }
+
 /**
- * 饼图 + 图边占比标注 + 点击高亮金额。
+ * 8 色调色板（PRD 5.2）。
  *
- * 占比数字标在图**旁边的图例行**上（PRD 5.2「占比数字直接标注在图边」），
- * 点击扇区把中心文案换成该段金额，再点一次取消。
+ * 原来 3 色在「按账户拆段」之后不够用，会撞色；扩到 8 色刚好覆盖 `MAX_SLICES`。
+ * 顺序刻意让相邻色相差得开，避免两段相邻同色系。
+ */
+private val AssetPalette =
+    listOf(
+        AssetGreen,
+        Color(0xFF4FA3D1),
+        Color(0xFFE0A33F),
+        Color(0xFF7B68B5),
+        Color(0xFF3FB0A0),
+        Color(0xFFC96B9B),
+        Color(0xFF8AA83F),
+        Color(0xFFB0774A),
+    )
+
+/** 「其他」段固定中性灰：它是聚合项，用彩色会让人误以为是真实账户。 */
+private val OtherGray = Color(0xFF9E9E9E)
+
+private fun sliceColor(
+    label: String,
+    index: Int,
+): Color = if (label == BreakdownCalculator.OTHER_LABEL) OtherGray else AssetPalette[index % AssetPalette.size]
+
+/**
+ * 饼图 + 图边占比标注 + 点击圆心切换「金额 / 百分比」（PRD 第 4 条）。
+ *
+ * 三个交互分开：
+ * - 点扇区 / 图例行 → 选中该段（再点取消）；
+ * - 点圆心 → 在金额与百分比之间切换；
+ * - 点其他地方 → 什么都不做。
+ *
+ * @param center 当前显示模式，由父级持有，资产/负债两块共用一份，切换其一另一块同步
+ * @param onToggleCenter 切换模式
+ * @param showToggleHint 是否还要显示「点击切换」提示（用户切换过一次后就不再提示）
  */
 @Composable
 private fun BreakdownPie(
     slices: List<AssetSlice>,
     total: Long,
     tag: String,
-    palette: List<Color> = listOf(AssetGreen, Color(0xFF4FA3D1), Color(0xFF2E7D5B)),
+    center: PieCenter,
+    onToggleCenter: () -> Unit,
+    showToggleHint: Boolean,
 ) {
     var selected by remember(slices) { mutableIntStateOf(-1) }
+    val palette = slices.mapIndexed { index, slice -> sliceColor(slice.label, index) }
     val pieSlices =
         slices.mapIndexed { index, slice ->
             PieSlice(
                 label = slice.label,
                 value = slice.amount,
-                color = palette[index % palette.size].toArgbLong(),
+                color = palette[index].toArgbLong(),
             )
         }
     val active = slices.getOrNull(selected)
@@ -331,22 +407,42 @@ private fun BreakdownPie(
                     selected = selected,
                     onSelect = { selected = if (it == selected) -1 else it },
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        // 圆心可点：点它切换显示模式
+                        modifier =
+                            Modifier
+                                .clip(CircleShape)
+                                .clickable(onClick = onToggleCenter)
+                                .padding(8.dp)
+                                .testTag("${tag}_center"),
+                    ) {
                         Text(
                             text = active?.label ?: "合计",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        val value = active?.amount ?: total
                         Text(
-                            text = "¥${MoneyFormatter.centsToYuan(active?.amount ?: total)}",
+                            text =
+                                when (center) {
+                                    PieCenter.AMOUNT -> "¥${MoneyFormatter.centsToYuan(value)}"
+                                    PieCenter.PERCENT ->
+                                        if (active == null) {
+                                            "100%"
+                                        } else {
+                                            "${active.percent(total)}%"
+                                        }
+                                },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.testTag("${tag}_center_value"),
                         )
-                        if (active != null) {
+                        if (showToggleHint) {
                             Text(
-                                text = "${active.percent(total)}%",
+                                text = "点击切换",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                             )
                         }
                     }
@@ -356,7 +452,7 @@ private fun BreakdownPie(
         Spacer(Modifier.height(8.dp))
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         slices.forEachIndexed { index, slice ->
-            val color = palette[index % palette.size]
+            val color = palette[index]
             Row(
                 modifier =
                     Modifier

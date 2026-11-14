@@ -233,61 +233,69 @@ object NetWorthReplay {
 
 /**
  * 由账户列表直接算资产 / 负债构成（与 [NetAssetsCalculator] 同一口径，避免两处漂移）。
+ *
+ * v1.9.0（PRD 第 5 条）起**按单个账户拆段**，不再按账户类型聚合：Q 卡和 W 卡是两个储蓄卡账户，
+ * 就应该是饼图上两段，而不是并成「储蓄卡」一段。账户超过 [MAX_SLICES] 个时取金额最大的
+ * 前 [MAX_SLICES] - 1 段单列，其余合并为「其他」——否则饼图会碎成一圈细条，读不出信息。
  */
 object BreakdownCalculator {
+    /** 饼图最多几段（含「其他」）。 */
+    const val MAX_SLICES = 8
+
+    /** 「其他」段的固定标签。 */
+    const val OTHER_LABEL = "其他"
+
     fun assets(accounts: List<Account>): AssetBreakdown {
         val visible = accounts.filter { !it.hidden }
-        var cash = 0L
-        var savings = 0L
-        var invest = 0L
-        var lendOut = 0L
         var excluded = 0L
+        val parts = mutableListOf<AssetSlice>()
         visible.forEach { account ->
             when (account.type) {
-                AccountType.CASH -> if (account.balance > 0) cash += account.balance
-                AccountType.SAVINGS -> if (account.balance > 0) savings += account.balance
-                // 信用卡多还出来的正余额，算进储蓄卡桶（钱确实在卡里）
-                AccountType.CREDIT -> if (account.balance > 0) savings += account.balance
-                // v1.9.0：借贷待收为正，单列「借出款」，不再混进储蓄卡（PRD 2.4）
-                AccountType.DEBT -> if (account.balance > 0) lendOut += account.balance
+                // 现金/储蓄卡为正才进资产段；透支的绝对值进负债段
+                AccountType.CASH, AccountType.SAVINGS ->
+                    if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
+                // 信用账户多还出来的正余额是资产（钱在卡里），标签仍用账户名
+                AccountType.CREDIT -> if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
+                // 借贷待收为正（v1.9.0 净值模型：余额符号决定方向）
+                AccountType.DEBT -> if (account.balance > 0) parts += AssetSlice(account.name, account.balance)
                 AccountType.INVEST ->
-                    if (account.includeInNetAssets) invest += account.marketValueCents else excluded += account.marketValueCents
+                    if (account.includeInNetAssets) {
+                        if (account.marketValueCents > 0) parts += AssetSlice(account.name, account.marketValueCents)
+                    } else {
+                        excluded += account.marketValueCents
+                    }
             }
         }
-        return AssetBreakdown(
-            slices =
-                listOf(
-                    AssetSlice("现金", cash),
-                    AssetSlice("储蓄卡", savings),
-                    AssetSlice("投资", invest),
-                    AssetSlice("借出款", lendOut),
-                ),
-            excludedInvest = excluded,
-        )
+        return AssetBreakdown(slices = foldToLimit(parts), excludedInvest = excluded)
     }
 
     fun liabilities(accounts: List<Account>): LiabilityBreakdown {
         val visible = accounts.filter { !it.hidden }
-        var credit = 0L
-        var borrowIn = 0L
-        var overdraft = 0L
+        val parts = mutableListOf<AssetSlice>()
         visible.forEach { account ->
             when (account.type) {
-                AccountType.CREDIT -> if (account.balance < 0) credit += -account.balance
-                // v1.9.0：借贷待还为负，单列「借入款」
-                AccountType.DEBT -> if (account.balance < 0) borrowIn += -account.balance
-                AccountType.CASH, AccountType.SAVINGS -> if (account.balance < 0) overdraft += -account.balance
+                AccountType.CREDIT -> if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
+                AccountType.DEBT -> if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
+                AccountType.CASH, AccountType.SAVINGS ->
+                    if (account.balance < 0) parts += AssetSlice(account.name, -account.balance)
                 AccountType.INVEST -> Unit
             }
         }
-        return LiabilityBreakdown(
-            slices =
-                listOf(
-                    AssetSlice("信用欠款", credit),
-                    AssetSlice("借入款", borrowIn),
-                    AssetSlice("储蓄卡透支", overdraft),
-                ),
-        )
+        return LiabilityBreakdown(slices = foldToLimit(parts))
+    }
+
+    /**
+     * 段数超限时折叠：按金额降序取前 `MAX_SLICES - 1` 段，剩下全部并进「其他」（排最后）。
+     *
+     * 「其他」用总和参与排序之外的位置——它永远在最后，因为它是聚合项，放在中间会让人
+     * 误以为那是一个真实账户。
+     */
+    fun foldToLimit(parts: List<AssetSlice>): List<AssetSlice> {
+        if (parts.size <= MAX_SLICES) return parts
+        val sorted = parts.sortedByDescending { it.amount }
+        val head = sorted.take(MAX_SLICES - 1)
+        val rest = sorted.drop(MAX_SLICES - 1).sumOf { it.amount }
+        return head + AssetSlice(OTHER_LABEL, rest)
     }
 }
 

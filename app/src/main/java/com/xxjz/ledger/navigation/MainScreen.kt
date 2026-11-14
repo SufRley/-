@@ -9,9 +9,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.AccountBalance
-import androidx.compose.material.icons.outlined.PieChart
-import androidx.compose.material.icons.outlined.Receipt
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -21,16 +18,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
-private fun iconOf(tab: MainTab): ImageVector =
-    when (tab) {
-        MainTab.LEDGER -> Icons.Outlined.Receipt
-        MainTab.REPORT -> Icons.Outlined.PieChart
-        MainTab.ACCOUNTS -> Icons.Outlined.AccountBalance
-    }
 
 /**
  * 主框架：底部三 Tab（v1.8.0 / PRD D8）。
@@ -56,7 +48,14 @@ fun MainScreen(
     }
 }
 
-/** 底部导航栏：三个等宽 Tab，纯图标 + 短标签。 */
+/**
+ * 底部导航栏：三个等宽 Tab，**纯汉字、无图标**（PRD v1.9.0 第 1 条）。
+ *
+ * 为什么去掉图标：屏宽 360dp 除以 3 只剩 120dp 一格，图标 + 汉字挤在一起时汉字只有
+ * `labelMedium` 那么小，读起来比没有图标还费劲。只留汉字、字号抬到 `titleSmall`，
+ * 反而更好认。也保留 `NavigationBarItem` 而不是自绘 Row——选中指示器、水波纹、
+ * 无障碍角色都是 Material3 现成的。
+ */
 @Composable
 fun XxjzBottomBar(
     currentRoute: String?,
@@ -65,12 +64,31 @@ fun XxjzBottomBar(
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         NavigationBar {
             MainTab.entries.forEach { tab ->
+                val selected = currentRoute == tab.route
                 NavigationBarItem(
-                    selected = currentRoute == tab.route,
+                    selected = selected,
                     onClick = { onSelect(tab) },
-                    icon = { Icon(iconOf(tab), contentDescription = tab.label) },
-                    label = { Text(tab.label) },
-                    modifier = Modifier.testTag("tab_${tab.route}"),
+                    // 没有图标时 NavigationBarItem 会把 label 居中，
+                    // 传空 icon 即可，不必绕开这个组件
+                    icon = {},
+                    label = {
+                        Text(
+                            text = tab.label,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color =
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                        )
+                    },
+                    // 没有图标之后，读屏需要显式告知这一项讲的是什么
+                    modifier =
+                        Modifier
+                            .testTag("tab_${tab.route}")
+                            .semantics { contentDescription = tab.label },
                 )
             }
         }

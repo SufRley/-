@@ -432,6 +432,28 @@ class FakeAccountRepository : AccountRepository {
         items[id] = current.copy(marketValueCents = marketValueCents.coerceAtLeast(0))
         version.value += 1
     }
+
+    /** 账户合并（v1.9.0）：把源账户上的流水改挂到目标账户，口径与真实实现保持一致。 */
+    override suspend fun moveTxnsTo(
+        fromId: String,
+        toId: String,
+        at: Long,
+    ) {
+        if (fromId == toId) return
+        val source = txns ?: return
+        source.items.entries.forEach { (id, txn) ->
+            if (txn.isDeleted) return@forEach
+            source.items[id] =
+                when {
+                    txn.accountId == fromId && txn.toAccountId == fromId ->
+                        txn.copy(accountId = toId, toAccountId = toId, updatedAt = at)
+                    txn.accountId == fromId -> txn.copy(accountId = toId, updatedAt = at)
+                    txn.toAccountId == fromId -> txn.copy(toAccountId = toId, updatedAt = at)
+                    else -> return@forEach
+                }
+        }
+        version.value += 1
+    }
 }
 
 /** 标签仓库的内存实现（M9 管理页用）。 */

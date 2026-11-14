@@ -48,7 +48,8 @@ fun LockScreen(
     modifier: Modifier = Modifier,
 ) {
     var pin by remember { mutableStateOf("") }
-    var pinMode by remember { mutableStateOf(!biometricAvailable || !state.hasPin.not()) }
+    // 有指纹且已设密码时先给指纹，否则直接进密码输入（v1.9.0：原来那串双重否定等价于恒 false）
+    var pinMode by remember { mutableStateOf(!biometricAvailable || !state.hasPin) }
 
     Surface(modifier = modifier.fillMaxSize().testTag("screen_lock")) {
         Column(

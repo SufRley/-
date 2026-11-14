@@ -89,10 +89,11 @@ data class Account(
     /** 投资账户市值是否计入净资产，默认计入。 */
     val includeInNetAssets: Boolean = true,
     /**
-     * 借贷方向（v1.9.0 / PRD 2.1），仅 [AccountType.DEBT] 账户有值。
+     * 借贷方向（v1.9.0 / PRD 2.1）。
      *
-     * 建账户时锁定，之后只显示对应的两个操作。null 表示历史数据尚未补齐，
-     * 按「我借出」处理（余额为正时显示为待收更符合直觉）。
+     * **v1.9.0 净值模型后仅作历史数据兼容保留，不再参与任何业务逻辑**：
+     * 一个借贷账户 = 一个人 = 一本流水账，方向由余额符号表达（正数待收、负数待还）。
+     * 字段留着是为了升级时不丢数据、必要时可回溯。
      */
     val debtDirection: DebtDirection? = null,
     /** 备注（v1.9.0，从旧台账搬过来的备注也落在这里）。 */
@@ -106,7 +107,7 @@ data class Account(
     /** 投资盈亏率（0..1 的小数），成本为 0 时返回 0 避免除零。 */
     val profitRate: Double get() = if (costCents > 0) profitCents.toDouble() / costCents else 0.0
 
-    /** 是否「我借出」（对方欠我）。v1.9.0 */
+    /** 是否「我借出」（对方欠我）。v1.9.0 净值模型后仅存档用，业务逻辑请判断 `balance` 符号。 */
     val isLending: Boolean get() = type == AccountType.DEBT && debtDirection != DebtDirection.BORROW
 
     /** 是否「我借入」（我欠对方）。v1.9.0 */
