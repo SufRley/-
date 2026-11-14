@@ -42,20 +42,80 @@ class AppLockTest {
         }
 
         @Test
-        @DisplayName("切后台 1 分钟内回来不重新锁，超过才锁")
-        fun grace() {
+        @DisplayName("离开一秒就回来也要重新解锁（宽限期已取消）")
+        fun everyReturnLocks() {
+            guard.configure(enabled = true, hasPin = true)
+            guard.unlockWithPin("1234", ::rightPin)
+            assertFalse(guard.state.locked)
+
+            guard.onBackground()
+            clock += 1_000
+            guard.onForeground()
+            assertTrue(guard.state.locked)
+        }
+
+        @Test
+        @DisplayName("没有离开过的 ON_START 不上锁，避免冷启动刚落锁又重锁")
+        fun foregroundWithoutLeaving() {
             guard.configure(enabled = true, hasPin = true)
             guard.unlockWithPin("1234", ::rightPin)
 
+            guard.onForeground()
+            assertFalse(guard.state.locked)
+        }
+
+        @Test
+        @DisplayName("相机/相册豁免只顶一次，第二次离开照样锁")
+        fun trustedLeaveSkipsOnce() {
+            guard.configure(enabled = true, hasPin = true)
+            guard.unlockWithPin("1234", ::rightPin)
+
+            guard.beginTrustedLeave()
             guard.onBackground()
-            clock += 30_000
             guard.onForeground()
             assertFalse(guard.state.locked)
 
             guard.onBackground()
-            clock += 61_000
             guard.onForeground()
             assertTrue(guard.state.locked)
+        }
+
+        @Test
+        @DisplayName("豁免超过 10 分钟自动失效，外部 Activity 被杀也不会让锁失灵")
+        fun trustedLeaveExpires() {
+            guard.configure(enabled = true, hasPin = true)
+            guard.unlockWithPin("1234", ::rightPin)
+
+            guard.beginTrustedLeave()
+            clock += AppLockGuard.TRUSTED_LEAVE_TIMEOUT_MS + 1
+            guard.onBackground()
+            guard.onForeground()
+            assertTrue(guard.state.locked)
+        }
+
+        @Test
+        @DisplayName("提前归还豁免名额后，下一次离开不再免锁")
+        fun endTrustedLeave() {
+            guard.configure(enabled = true, hasPin = true)
+            guard.unlockWithPin("1234", ::rightPin)
+
+            guard.beginTrustedLeave()
+            guard.endTrustedLeave()
+            guard.onBackground()
+            guard.onForeground()
+            assertTrue(guard.state.locked)
+        }
+
+        @Test
+        @DisplayName("没设 PIN 时干脆不上锁，避免把用户关在门外")
+        fun noPinNeverLocks() {
+            guard.configure(enabled = true, hasPin = false)
+            assertFalse(guard.state.locked)
+
+            guard.onBackground()
+            clock += 10 * 60_000
+            guard.onForeground()
+            assertFalse(guard.state.locked)
         }
 
         @Test

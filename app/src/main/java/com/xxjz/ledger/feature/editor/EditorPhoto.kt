@@ -39,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.xxjz.ledger.core.common.Logger
+import com.xxjz.ledger.ui.lock.LocalExternalActivityGate
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -69,11 +70,14 @@ class PhotoCapture internal constructor(
 @Composable
 internal fun rememberPhotoCapture(onCaptured: (String?) -> Unit): PhotoCapture {
     val context = LocalContext.current
+    // 相机与相册都是独立 Activity，回来时别让应用锁把用户拦在门外（v1.9.3 第 1 条）
+    val gate = LocalExternalActivityGate.current
     // 拍照要先给出目标 Uri，拍完再读回来；这里用 remember 保住这个中间文件
     val pending = remember { arrayOfNulls<File>(1) }
 
     val cameraLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+            gate.end()
             val file = pending[0]
             if (ok && file != null) {
                 onCaptured(compressTo(context, Uri.fromFile(file)))
@@ -85,19 +89,22 @@ internal fun rememberPhotoCapture(onCaptured: (String?) -> Unit): PhotoCapture {
 
     val galleryLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            gate.end()
             if (uri != null) onCaptured(compressTo(context, uri))
         }
 
-    return remember(context) {
+    return remember(context, gate) {
         PhotoCapture(
             takePhoto = {
                 val target = newTempFile(context)
                 pending[0] = target
+                gate.begin()
                 cameraLauncher.launch(
                     FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", target),
                 )
             },
             pickFromGallery = {
+                gate.begin()
                 galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             },
         )
