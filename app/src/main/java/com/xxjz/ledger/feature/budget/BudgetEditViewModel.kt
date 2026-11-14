@@ -10,7 +10,6 @@ import com.xxjz.ledger.domain.model.BudgetPeriod
 import com.xxjz.ledger.domain.model.BudgetScope
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.TxnType
-import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.usecase.BudgetDraft
 import com.xxjz.ledger.domain.usecase.DeleteBudgetUseCase
@@ -55,7 +54,6 @@ data class BudgetEditState(
 class BudgetEditViewModel
     @Inject
     constructor(
-        private val repository: BudgetRepository,
         private val categoryRepository: CategoryRepository,
         private val getBudgetForMonth: GetBudgetForMonthUseCase,
         private val saveBudget: SaveBudgetUseCase,

@@ -190,17 +190,6 @@ class CalendarViewModelTest {
      * `expectMostRecentItem()` 在队列为空时会抛异常，而翻月测试里存在「连续切换只产生一次发射」的情况，
      * 所以这里取不到就沿用旧值。
      */
-    private suspend fun app.cash.turbine.ReceiveTurbine<CalendarUiState>.latestState(fallback: CalendarUiState): CalendarUiState {
-        var last = fallback
-        while (true) {
-            var item: CalendarUiState? = null
-            try {
-                item = expectMostRecentItem()
-            } catch (e: AssertionError) {
-                break
-            }
-            last = item ?: break
-        }
-        return last
-    }
+    private suspend fun app.cash.turbine.ReceiveTurbine<CalendarUiState>.latestState(fallback: CalendarUiState): CalendarUiState =
+        runCatching { expectMostRecentItem() }.getOrNull() ?: fallback
 }

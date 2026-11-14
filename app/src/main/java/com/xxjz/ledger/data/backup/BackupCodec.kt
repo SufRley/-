@@ -1,5 +1,6 @@
 package com.xxjz.ledger.data.backup
 
+import com.xxjz.ledger.core.common.Logger
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,6 +19,8 @@ import javax.inject.Singleton
 class BackupCodec
     @Inject
     constructor() {
+        private val tag = "BackupCodec"
+
         private val json =
             Json {
                 ignoreUnknownKeys = true
@@ -51,6 +54,8 @@ class BackupCodec
                 try {
                     json.decodeFromString(BackupPayload.serializer(), plain.toString(Charsets.UTF_8))
                 } catch (e: Exception) {
+                    // 解析原始异常要记下来：是字段缺失还是类型不符，排查时差别很大
+                    Logger.w(tag, "备份 JSON 解析失败", e)
                     throw BackupException(BackupFailure.CORRUPT, "备份内容无法解析，文件可能已损坏")
                 }
             if (payload.payloadVersion > BackupPayload.CURRENT_PAYLOAD_VERSION) {

@@ -116,7 +116,7 @@ object CalcEngine {
     }
 
     /** 求值。栈空时只把当前输入固化为结果。 */
-    fun equals(state: CalcState): CalcState {
+    fun evaluate(state: CalcState): CalcState {
         if (state.error != null) return CalcState()
         if (state.evaluated) return state
         val values = state.values.toMutableList()

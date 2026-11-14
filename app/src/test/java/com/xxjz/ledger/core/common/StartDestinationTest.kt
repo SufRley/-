@@ -87,7 +87,7 @@ class StartDestinationTest {
         runTest {
             val broken =
                 object : SettingsRepository by FakeSettingsDataStore() {
-                    override suspend fun current(): AppSettings = throw IllegalStateException("DataStore 损坏")
+                    override suspend fun current(): AppSettings = error("DataStore 损坏")
                 }
             assertTrue(readOnboardingDone(broken))
         }

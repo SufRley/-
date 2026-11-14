@@ -258,17 +258,6 @@ class SearchViewModelTest {
      * 直接用 `expectMostRecentItem()` 在队列为空时会抛异常，而防抖窗口内的「不该变」断言
      * 恰恰要求保持原状态，所以这里先尝试取出、取不到就沿用旧值。
      */
-    private suspend fun app.cash.turbine.ReceiveTurbine<SearchUiState>.latestState(fallback: SearchUiState): SearchUiState {
-        var last = fallback
-        while (true) {
-            var item: SearchUiState? = null
-            try {
-                item = expectMostRecentItem()
-            } catch (e: AssertionError) {
-                break
-            }
-            last = item ?: break
-        }
-        return last
-    }
+    private suspend fun app.cash.turbine.ReceiveTurbine<SearchUiState>.latestState(fallback: SearchUiState): SearchUiState =
+        runCatching { expectMostRecentItem() }.getOrNull() ?: fallback
 }

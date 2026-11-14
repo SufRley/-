@@ -85,8 +85,6 @@ class ReportViewModelTest {
         return id
     }
 
-    private fun itemsDebug() = txnRepo.items.values.map { it.id + "@" + it.dateTime }
-
     private fun viewModel() = ReportViewModel(txnRepo, categoryRepo, YearSummaryUseCase(txnRepo, categoryRepo))
 
     @Test

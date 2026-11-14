@@ -26,6 +26,7 @@ class SaveRecurringUseCaseTest {
 
     private val start: Long = DateUtils.toMillis(LocalDate.of(2026, 12, 1), LocalTime.of(8, 30))
 
+    @Suppress("LongParameterList") // 测试造数工厂，字段一一对应 RecurringDraft
     private fun draft(
         id: String? = null,
         type: TxnType = TxnType.EXPENSE,

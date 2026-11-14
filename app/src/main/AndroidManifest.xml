@@ -1,10 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- 单机版：不声明 INTERNET 权限（AC-90） -->
+    <!--
+        单机版：不声明 INTERNET 权限（AC-90）。
 
-    <!-- 每日记账提醒（AC-85）；Android 13+ 需运行时申请 -->
+        本 App 实际只用到两条权限，其余全是依赖库「捎带」进来的：
+        - POST_NOTIFICATIONS：每日记账提醒（AC-85），Android 13+ 需运行时申请；
+        - USE_BIOMETRIC / USE_FINGERPRINT：应用锁的生物识别（AC-86）。
+
+        WorkManager 会自己往清单里加 INTERNET / ACCESS_NETWORK_STATE / WAKE_LOCK 等，
+        本地库模式用不上（没有任何网络请求），因此显式移除，保证「装完看权限列表是干净的」。
+    -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.INTERNET"
+        tools:node="remove" />
 
     <application
         android:name=".XxjzApplication"

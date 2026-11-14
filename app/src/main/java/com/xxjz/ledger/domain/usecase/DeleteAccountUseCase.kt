@@ -19,7 +19,8 @@ class DeleteAccountUseCase
             id: String,
             now: Long = System.currentTimeMillis(),
         ): AppResult<Int> {
-            val account = accountRepository.byId(id) ?: return AppResult.Failure(AppError.NotFound)
+            // 只判存在性；账户名不参与删除逻辑
+            accountRepository.byId(id) ?: return AppResult.Failure(AppError.NotFound)
             if (accountRepository.count() <= 1) return AppResult.Failure(AppError.Custom("至少保留一个账户"))
             val count = accountRepository.txnCount(id)
             accountRepository.deleteWithTxns(id, now)

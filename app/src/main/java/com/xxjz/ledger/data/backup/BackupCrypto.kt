@@ -1,5 +1,6 @@
 package com.xxjz.ledger.data.backup
 
+import com.xxjz.ledger.core.common.Logger
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
@@ -40,22 +41,35 @@ class BackupException(
  *
  * 流程：`JSON --GZIP--> 压缩 --AES/GCM--> 密文`，包一层带 magic 的文件头：
  * ```
- * "XXJZBAK1"(8) | formatVersion(4) | iterations(4) | saltLen(4) | salt(16) | ivLen(4) | iv(12) | ciphertext
+ * v2: "XXJZBAK1"(8) | formatVersion(4) | iterations(4) | saltLen(4) | salt(16)
+ *     | ivLen(4) | iv(12) | cipherLen(4) | ciphertext
+ * v1: 同上去掉 cipherLen 字段
  * ```
  *
  * - KDF：PBKDF2-HMAC-SHA256，120000 轮，16 字节随机盐。
  * - 对称加密：AES-256-GCM，12 字节随机 IV，128 位 Tag。
  * - **只用 JDK 自带的 `javax.crypto`**，不引第三方加密库。
  *
- * GCM 的 Tag 校验同时承担「完整性校验」：密码错、文件被改，都会在解密时抛
- * [AEADBadTagException]，这里统一翻译成 [BackupFailure.WRONG_PASSWORD]。
+ * GCM 的 Tag 校验同时承担「完整性校验」：密码错、文件被截断/篡改，都会在解密时抛
+ * [AEADBadTagException]。但两者的处理完全不同（重输密码 vs 重新获取文件），
+ * 所以 v2 起在头部写了 `cipherLen`：与实际剩余字节数不符即判定为文件残缺。
+ * 读 v1 老文件时没有该字段，只能统一按「密码错误或文件损坏」提示。
  */
 object BackupCrypto {
+    private const val TAG = "BackupCrypto"
+
+    /** 盐最长 64 字节、IV 最长 32 字节（AES-GCM 标准 IV 是 12 字节，留余量）。 */
+    private const val MAX_SALT_LEN = 64
+    private const val MAX_IV_LEN = 32
+
     /** 文件魔数，够长才能可靠区分「选错文件」。 */
     val MAGIC = "XXJZBAK1".toByteArray(Charsets.US_ASCII)
 
-    /** 文件头格式版本。 */
-    const val FORMAT_VERSION = 1
+    /** 文件头格式版本：2 = 带 cipherLen 字段（v1 老文件仍可读）。 */
+    const val FORMAT_VERSION = 2
+
+    /** 仍可读取的最低文件头版本。 */
+    private const val MIN_FORMAT_VERSION = 1
 
     const val SALT_BYTES = 16
     const val IV_BYTES = 12
@@ -89,6 +103,7 @@ object BackupCrypto {
             o.write(salt)
             o.writeInt(iv.size)
             o.write(iv)
+            o.writeInt(cipherText.size)
             o.write(cipherText)
         }
         return out.toByteArray()
@@ -106,8 +121,20 @@ object BackupCrypto {
         return try {
             cipher.doFinal(header.cipherText)
         } catch (e: AEADBadTagException) {
-            throw BackupException(BackupFailure.WRONG_PASSWORD, "密码错误或备份文件已损坏")
+            // GCM 校验失败只有两种可能：密码不对，或者密文被截断/篡改。
+            // 两者对用户的下一步动作完全不同（再输一次 vs 换个文件），得分开报。
+            // 判据是「头部声明的密文长度 ≠ 实际读到的长度」——只有 v2 文件有这个字段，
+            // v1 老文件没法区分，保持原来的「密码错误或已损坏」措辞。
+            val truncated = header.declaredCipherLen != null && header.declaredCipherLen != header.cipherText.size
+            Logger.d(TAG, "GCM tag 校验失败，声明=${header.declaredCipherLen} 实际=${header.cipherText.size}", e)
+            throw when {
+                truncated -> BackupException(BackupFailure.CORRUPT, "备份文件不完整（可能传输中断），请重新获取后导入")
+                header.declaredCipherLen == null ->
+                    BackupException(BackupFailure.WRONG_PASSWORD, "密码错误或备份文件已损坏")
+                else -> BackupException(BackupFailure.WRONG_PASSWORD, "密码错误，请重试")
+            }
         } catch (e: Exception) {
+            Logger.w(TAG, "解密失败", e)
             throw BackupException(BackupFailure.CORRUPT, "备份文件已损坏，无法解密")
         }
     }
@@ -127,6 +154,7 @@ object BackupCrypto {
         try {
             GZIPInputStream(ByteArrayInputStream(packed)).use { it.readBytes() }
         } catch (e: Exception) {
+            Logger.w(TAG, "gzip 解压失败", e)
             throw BackupException(BackupFailure.CORRUPT, "备份内容损坏，无法解压")
         }
 
@@ -140,36 +168,60 @@ object BackupCrypto {
         val salt: ByteArray,
         val iv: ByteArray,
         val cipherText: ByteArray,
+        /** 头部声明的密文长度；v1 老文件没有该字段，为 null。 */
+        val declaredCipherLen: Int?,
     )
 
     private fun readHeader(file: ByteArray): Header {
         if (!file.startsWith(MAGIC)) {
             throw BackupException(BackupFailure.NOT_BACKUP, "这不是「一心记账」的备份文件")
         }
-        try {
+        return try {
             DataInputStream(ByteArrayInputStream(file)).use { input ->
                 input.skipBytes(MAGIC.size)
-                val version = input.readInt()
-                if (version > FORMAT_VERSION) {
-                    throw BackupException(BackupFailure.UNSUPPORTED_VERSION, "备份文件来自更新版本的 App，请先升级")
-                }
-                val iterations = input.readInt()
-                if (iterations <= 0) throw BackupException(BackupFailure.CORRUPT, "备份文件已损坏")
-                val salt = ByteArray(input.readInt().also { if (it <= 0 || it > 64) throw corrupt() })
-                input.readFully(salt)
-                val ivLen = input.readInt()
-                if (ivLen <= 0 || ivLen > 32) throw corrupt()
-                val iv = ByteArray(ivLen)
-                input.readFully(iv)
-                val cipherText = input.readBytes()
-                if (cipherText.isEmpty()) throw corrupt()
-                return Header(iterations, salt, iv, cipherText)
+                parseHeader(input)
             }
         } catch (e: BackupException) {
             throw e
         } catch (e: Exception) {
+            // EOFException 之类：文件被截断
+            Logger.w(TAG, "备份头部读取失败", e)
             throw BackupException(BackupFailure.CORRUPT, "备份文件已损坏")
         }
+    }
+
+    /**
+     * 逐字段读头部。
+     *
+     * 长度字段全部走 [readLength]：任何「<=0 或超过上限」都当损坏处理，
+     * 否则一个被篡改的长度会让后面的 `ByteArray(n)` 直接 OOM。
+     */
+    private fun parseHeader(input: DataInputStream): Header {
+        val version = input.readInt()
+        if (version > FORMAT_VERSION) {
+            throw BackupException(BackupFailure.UNSUPPORTED_VERSION, "备份文件来自更新版本的 App，请先升级")
+        }
+        if (version < MIN_FORMAT_VERSION) throw corrupt()
+        val iterations = input.readInt()
+        if (iterations <= 0) throw corrupt()
+        val salt = ByteArray(readLength(input, MAX_SALT_LEN))
+        input.readFully(salt)
+        val iv = ByteArray(readLength(input, MAX_IV_LEN))
+        input.readFully(iv)
+        // v2 起才有密文长度；v1 的密文一直读到文件尾，无法反推是否被截断
+        val declared = if (version >= 2) readLength(input, Int.MAX_VALUE) else null
+        val cipherText = input.readBytes()
+        if (cipherText.isEmpty()) throw corrupt()
+        return Header(iterations, salt, iv, cipherText, declared)
+    }
+
+    private fun readLength(
+        input: DataInputStream,
+        max: Int,
+    ): Int {
+        val length = input.readInt()
+        if (length <= 0 || length > max) throw corrupt()
+        return length
     }
 
     private fun corrupt() = BackupException(BackupFailure.CORRUPT, "备份文件已损坏")

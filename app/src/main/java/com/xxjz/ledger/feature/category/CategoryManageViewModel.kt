@@ -128,8 +128,7 @@ class CategoryManageViewModel
             }
 
             val target = existing.firstOrNull { it.id == id }
-            // 已有子类的大类不能再被挂到别的分类下面（本 App 固定两层）
-            if (parentId != null && target != null && snapshot.groups.any { it.parent.id == target.id && it.children.isNotEmpty() }) {
+            if (target != null && parentId != null && hasChildren(snapshot.groups, target.id)) {
                 return fail("该分类下还有子分类，不能再设成子分类")
             }
 
@@ -250,6 +249,12 @@ class CategoryManageViewModel
                 _state.update { it.copy(message = "已删除商家「${merchant.name}」") }
             }
         }
+
+        /** 该分类下是否还有子分类（本 App 固定两层，看一级子类的 children 即可）。 */
+        private fun hasChildren(
+            groups: List<CategoryGroup>,
+            categoryId: String,
+        ): Boolean = groups.any { it.parent.id == categoryId && it.children.isNotEmpty() }
 
         private fun fail(message: String) {
             _state.update { it.copy(message = message) }

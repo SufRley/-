@@ -10,6 +10,8 @@ import kotlin.math.abs
  * 9 位上限约定：金额的「元」部分最多 9 位整数，即 |分| <= 999_999_999_99（11 位分）。
  */
 object MoneyFormatter {
+    private const val TAG = "MoneyFormatter"
+
     const val MAX_YUAN_DIGITS = 9
     const val MAX_CENTS: Long = 99_999_999_999L
 
@@ -56,16 +58,23 @@ object MoneyFormatter {
      */
     fun yuanToCents(text: String): Long? {
         val t = text.trim().replace(",", "")
-        if (t.isEmpty() || t == "-" || t == "." || t == "-.") return null
+        if (isBlankAmount(t)) return null
         return try {
             val bd = BigDecimal(t)
             bd.setScale(2, RoundingMode.HALF_UP).movePointRight(2).longValueExact()
-        } catch (e: ArithmeticException) {
-            null
         } catch (e: NumberFormatException) {
+            // 用 BigDecimal 解析失败只会抛 NumberFormatException（如 "1.2.3"）；
+            // 溢出/超出精度由 longValueExact 抛 ArithmeticException，也一并归为「非法输入」
+            Logger.d(TAG, "yuanToCents 非法输入: $t", e)
+            null
+        } catch (e: ArithmeticException) {
+            Logger.d(TAG, "yuanToCents 超出可表示范围: $t", e)
             null
         }
     }
+
+    /** 只有符号或小数点、以及空串，都算没输入。 */
+    private fun isBlankAmount(t: String): Boolean = t.isEmpty() || t == "-" || t == "." || t == "-."
 
     /** 是否超出 9 位上限。 */
     fun exceedsLimit(cents: Long): Boolean = abs(cents) > MAX_CENTS

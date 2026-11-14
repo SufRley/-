@@ -77,5 +77,5 @@ potential-bugs:
   ImplicitUnitReturnType:
     active: false
 
-formatting:
-  active: false
+# 格式类规则交给 ktlint（见 app/build.gradle.kts），detekt 不重复配置：
+# detekt-formatting 插件没启用，写 `formatting:` 段会被判为「未知配置项」直接 fail。

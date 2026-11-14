@@ -3,6 +3,7 @@ package com.xxjz.ledger.domain.usecase
 import androidx.room.withTransaction
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
+import com.xxjz.ledger.core.common.Logger
 import com.xxjz.ledger.data.backup.BackupPayload
 import com.xxjz.ledger.data.backup.BackupStats
 import com.xxjz.ledger.data.backup.toEntity
@@ -26,6 +27,8 @@ class RestoreBackupUseCase
         private val db: AppDatabase,
         private val settings: SettingsRepository,
     ) {
+        private val tag = "RestoreBackup"
+
         /**
          * 故障注入点：清空表之后、写数据之前调用。
          *
@@ -40,6 +43,7 @@ class RestoreBackupUseCase
             try {
                 db.withTransaction { replaceAll(payload) }
             } catch (e: Exception) {
+                Logger.w(tag, "导入事务失败，已回滚", e)
                 return AppResult.Failure(AppError.Custom("导入失败，数据已回滚到导入前"))
             }
             // 数据已经落库，设置写失败不该让用户误以为整次导入失败

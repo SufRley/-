@@ -10,7 +10,6 @@ import java.time.format.DateTimeFormatter
 /** 日期工具：日期以 epochMillis 存储，冗余 dateKey=yyyyMMdd 便于按天分组。 */
 object DateUtils {
     val zone: ZoneId get() = ZoneId.systemDefault()
-    private val YMD: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
     fun dateKeyOf(date: LocalDate): Int = date.year * 10_000 + date.monthValue * 100 + date.dayOfMonth
 

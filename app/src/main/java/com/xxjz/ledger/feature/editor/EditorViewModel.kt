@@ -186,7 +186,7 @@ class EditorViewModel
             if (current.evaluated) {
                 submit()
             } else {
-                _state.update { it.copy(calc = CalcEngine.equals(it.calc), dirty = true) }
+                _state.update { it.copy(calc = CalcEngine.evaluate(it.calc), dirty = true) }
             }
         }
 

@@ -68,10 +68,8 @@ object RecurringCalc {
         var cursor = rule.nextRunAt
         var times = rule.runTimes
         val runs = mutableListOf<Long>()
-        while (runs.size < maxRuns) {
-            if (rule.endAt != null && cursor > rule.endAt) break
-            if (rule.maxTimes != null && times >= rule.maxTimes) break
-            if (cursor > now) break
+        // 三个结束条件合成一个判断：写在循环头里，比三处 break 更容易看出「什么时候停」
+        while (runs.size < maxRuns && !isExhausted(rule, times, cursor, now)) {
             runs += cursor
             times += 1
             cursor = plusOnce(rule, cursor)
@@ -80,6 +78,18 @@ object RecurringCalc {
             (rule.maxTimes != null && times >= rule.maxTimes) ||
                 (rule.endAt != null && cursor > rule.endAt)
         return RunPlan(runs, cursor, times, finished)
+    }
+
+    /** 是否已经不该再补：过了结束日期、用满次数、或者已经追到今天之后。 */
+    private fun isExhausted(
+        rule: RecurringRule,
+        times: Int,
+        cursor: Long,
+        now: Long,
+    ): Boolean {
+        val pastEnd = rule.endAt != null && cursor > rule.endAt
+        val usedUp = rule.maxTimes != null && times >= rule.maxTimes
+        return pastEnd || usedUp || cursor > now
     }
 
     /** 恢复暂停：游标推到 [now] 之后，暂停期间的时刻全部丢弃（AC-54）。 */

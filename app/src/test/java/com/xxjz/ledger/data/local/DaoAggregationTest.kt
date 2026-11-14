@@ -40,6 +40,7 @@ class DaoAggregationTest {
         if (this::db.isInitialized) db.close()
     }
 
+    @Suppress("LongParameterList") // 测试造数工厂，字段一一对应实体，拆开反而更难读
     private fun txn(
         id: String,
         type: TxnType,

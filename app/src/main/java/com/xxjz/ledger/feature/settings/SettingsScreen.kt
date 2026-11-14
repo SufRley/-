@@ -90,7 +90,7 @@ fun SettingsScreen(
             }
             item {
                 PickerSetting("小数位") {
-                    (0..2).forEach { places ->
+                    for (places in 0..2) {
                         FilterChip(
                             selected = state.prefs.decimalPlaces == places,
                             onClick = { viewModel.setDecimalPlaces(places) },

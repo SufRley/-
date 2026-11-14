@@ -31,9 +31,11 @@ object DatabaseModule {
     fun provideDatabase(
         @ApplicationContext context: Context,
     ): AppDatabase =
-        Room.databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
+        Room
+            .databaseBuilder(context, AppDatabase::class.java, AppDatabase.NAME)
             .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(*ALL_MIGRATIONS)
+            // 逐个注册迁移：迁移表是编译期常量数组，spread 会多拷贝一次（detekt SpreadOperator 也会报）
+            .apply { ALL_MIGRATIONS.forEach { addMigrations(it) } }
             .fallbackToDestructiveMigrationOnDowngrade()
             .build()
 
