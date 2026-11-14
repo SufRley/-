@@ -7,21 +7,31 @@ import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.data.datastore.DefaultTimeMode
 import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.BillCycleCalculator
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.DebtAction
 import com.xxjz.ledger.domain.model.DebtDirection
+import com.xxjz.ledger.domain.model.Installment
+import com.xxjz.ledger.domain.model.InstallmentSchedule
+import com.xxjz.ledger.domain.model.InstallmentScope
+import com.xxjz.ledger.domain.model.Merchant
 import com.xxjz.ledger.domain.model.Tag
+import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
+import com.xxjz.ledger.domain.repository.InstallmentRepository
+import com.xxjz.ledger.domain.repository.MerchantRepository
 import com.xxjz.ledger.domain.repository.TagRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.DebtAccountDraft
 import com.xxjz.ledger.domain.usecase.DebtOpDraft
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
+import com.xxjz.ledger.domain.usecase.RefundTxnUseCase
 import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.domain.usecase.TxnDraft
@@ -40,9 +50,22 @@ import javax.inject.Inject
 /** 快捷分类格子的数量：3 行 × 4 列（PRD v1.9.1 第 5 条）。 */
 const val QUICK_CATEGORY_SLOTS = 12
 
+/** 商家抽屉一次拉多少个候选。够滑两屏，再多就变成「翻通讯录」了。 */
+private const val MERCHANT_SUGGEST_LIMIT = 60
+
 /** 记账面板一次性事件。 */
 sealed interface EditorEvent {
     data class Saved(val id: String) : EditorEvent
+
+    /**
+     * 「再记」：已经落库但页面不关，UI 弹一条 Snackbar 就好（v1.9.3 第 6.9 条）。
+     *
+     * 金额要跟着事件走：页面此时已经被清空，读 state 只会拿到 0。
+     */
+    data class SavedAndNext(
+        val id: String,
+        val amountCents: Long,
+    ) : EditorEvent
 
     data class Message(val text: String) : EditorEvent
 }
@@ -80,9 +103,29 @@ data class EditorUiState(
     val splits: Map<String, Long> = emptyMap(),
     /** 收据照片本地路径（PRD v1.9.1）。 */
     val photoPath: String? = null,
-    /** 全部标签，供「常用标签」两行展示。 */
+    /** 全部标签，供标签抽屉多选。 */
     val tags: List<Tag> = emptyList(),
     val selectedTagIds: Set<String> = emptySet(),
+    /** 全部模板，页头爱心弹层直接列（v1.9.3 第 7 条）。 */
+    val templates: List<Template> = emptyList(),
+    /** 商家候选，按使用次数倒序（商家的「常用」排序）。 */
+    val merchants: List<Merchant> = emptyList(),
+    val merchantId: String? = null,
+    /** 待报销：只有支出有意义。 */
+    val pendingReimbursement: Boolean = false,
+    /** 不计入收支统计。 */
+    val excludedFromStats: Boolean = false,
+    /**
+     * 已退金额（分），编辑一笔支出时从库实时读。
+     *
+     * 只读：[com.xxjz.ledger.domain.usecase.RefundTxnUseCase] 会生成**另一笔收入流水**，
+     * 不能把退款额从当前这笔的金额里扣掉——那等于篡改已发生的支出。
+     */
+    val refundedCents: Long = 0,
+    /** 本次要发起的退款金额（元文本），空表示不退款。 */
+    val refundText: String = "",
+    /** 新建支出时顺带建的分期期数；null 表示不分期。 */
+    val installmentPeriods: Int? = null,
 ) {
     val amountCents: Long? get() = CalcEngine.centsOf(calc)
 
@@ -142,6 +185,52 @@ data class EditorUiState(
 
     val amountDisplay: String
         get() = calc.display
+
+    val merchantName: String? get() = merchants.firstOrNull { it.id == merchantId }?.name
+
+    val refundCents: Long get() = MoneyFormatter.yuanToCents(refundText) ?: 0L
+
+    /** 还能不能再退：必须是编辑中的支出，且累计退款还没退完。 */
+    val refundable: Boolean get() = editingId != null && type == TxnType.EXPENSE && refundedCents < (amountCents ?: 0L)
+
+    /**
+     * 分期只对「支出 + 信用账户」开放。
+     *
+     * 储蓄卡分期在现实里不存在；支出之外的类型（收入/转账/借贷）也没有「分几期还」的概念。
+     * 限定这个条件，胶囊才不会变成一个点了没反应的摆设。
+     */
+    val installmentAvailable: Boolean
+        get() = type == TxnType.EXPENSE && accounts.firstOrNull { it.id == accountId }?.type == AccountType.CREDIT
+
+    /**
+     * 保存前置检查：null 表示可以存，否则是「还缺什么」的人话。
+     *
+     * 键盘上的「保存」按这个置灰，点不动时顺手把这句话弹成 Snackbar——
+     * 比一个灰按钮让人猜原因友好得多（PRD 6.9 禁用态）。
+     */
+    val saveBlocker: String?
+        get() =
+            when {
+                saving -> "正在保存…"
+                splitMode && splits.size < 2 -> "组合支付至少要两个账户"
+                effectiveAmount == null ->
+                    if (splitMode) "请填写各账户金额" else (calc.error ?: "请输入金额")
+                type == TxnType.EXPENSE || type == TxnType.INCOME ->
+                    when {
+                        categoryId == null -> "请选择分类"
+                        accountId == null -> "请选择账户"
+                        else -> null
+                    }
+                type == TxnType.DEBT ->
+                    when {
+                        debtAccountId == null -> "请选择借贷账户"
+                        accountId == null -> "请选择资金账户"
+                        else -> null
+                    }
+                accountId == null -> "请选择账户"
+                type == TxnType.TRANSFER && toAccountId == null -> "请选择转入账户"
+                else -> null
+            }
 }
 
 /** 从设置里读回来的「上次用的」，新建时按它预选（v1.9.3 第 2 条）。 */
@@ -175,6 +264,9 @@ class EditorViewModel
         private val saveDebtAccount: SaveDebtAccountUseCase,
         private val settings: SettingsRepository,
         private val tagRepository: TagRepository,
+        private val merchantRepository: MerchantRepository,
+        private val installmentRepository: InstallmentRepository,
+        private val refundTxn: RefundTxnUseCase,
     ) : ViewModel() {
         private val _state = MutableStateFlow(EditorUiState())
         val state: StateFlow<EditorUiState> = _state.asStateFlow()
@@ -200,6 +292,8 @@ class EditorViewModel
             observeCategories()
             observeAccounts()
             observeTags()
+            observeTemplates()
+            refreshMerchants()
             loadPreferences()
         }
 
@@ -301,6 +395,25 @@ class EditorViewModel
             }
         }
 
+        private fun observeTemplates() {
+            viewModelScope.launch {
+                templateRepository.observeAll().collect { list -> _state.update { it.copy(templates = list) } }
+            }
+        }
+
+        /**
+         * 拉一次商家候选。
+         *
+         * 商家是「用过的才出现」，没有 Flow 版本；新建一个商家后必须重新拉一次，
+         * 否则刚建的「星巴克」要等下次进页面才在抽屉里。
+         */
+        private fun refreshMerchants() {
+            viewModelScope.launch {
+                val list = runCatching { merchantRepository.suggest(MERCHANT_SUGGEST_LIMIT) }.getOrDefault(emptyList())
+                _state.update { it.copy(merchants = list) }
+            }
+        }
+
         private fun observeCategories() {
             viewModelScope.launch {
                 categoryRepository.observeAll().collect { list ->
@@ -332,6 +445,7 @@ class EditorViewModel
         suspend fun loadForEdit(txnId: String) {
             val txn = txnRepository.byId(txnId) ?: return
             val tagIds = runCatching { tagRepository.tagIdsOf(txn.id) }.getOrDefault(emptyList()).toSet()
+            val refunded = runCatching { txnRepository.refundedTotal(txn.id) }.getOrDefault(0L)
             _state.update {
                 it.copy(
                     editingId = txn.id,
@@ -353,9 +467,17 @@ class EditorViewModel
                     feeText = if (txn.fee > 0) MoneyFormatter.centsToPlain(txn.fee) else "",
                     photoPath = txn.photoPath,
                     selectedTagIds = tagIds,
+                    merchantId = txn.merchantId,
+                    pendingReimbursement = txn.pendingReimbursement,
+                    excludedFromStats = txn.excludedFromStats,
+                    refundedCents = refunded,
+                    refundText = "",
+                    installmentPeriods = null,
                     dirty = false,
                 )
             }
+            // 编辑一笔从没碰过的商家时，候选里可能还没有它，补一次让胶囊能显示名字
+            refreshMerchants()
         }
 
         /** 模板一键带入：类型/金额/备注回填，分类与账户为空时才用模板里的值。 */
@@ -403,11 +525,11 @@ class EditorViewModel
          * 现在保存常驻，表达式没算就先算。表达式不完整（以运算符结尾）由
          * [CalcEngine.evaluate] 报错，[submit] 拿到错误后不会写库。
          */
-        fun submitOrEvaluate() {
-            if (!_state.value.calc.evaluated) {
+        fun submitOrEvaluate(stayOpen: Boolean = false) {
+            if (!_state.value.calc.evaluated && !_state.value.splitMode) {
                 _state.update { it.copy(calc = CalcEngine.evaluate(it.calc)) }
             }
-            submit()
+            submit(stayOpen)
         }
 
         // ---------- 字段 ----------
@@ -540,12 +662,136 @@ class EditorViewModel
                 it.copy(selectedTagIds = next, dirty = true)
             }
 
-        /** 常用标签：按使用次数取前 10 个，两行横向滑动刚好放得下。 */
+        fun setMerchant(id: String?) = _state.update { it.copy(merchantId = id, dirty = true) }
+
+        /**
+         * 抽屉里现输入一个新商家。
+         *
+         * `findOrCreate` 保证了同名不会建两条；建完立刻回填并刷新候选，
+         * 否则用户回到页面会发现抽屉里还是没有它。
+         */
+        fun createMerchant(name: String) {
+            val trimmed = name.trim()
+            if (trimmed.isEmpty()) return
+            viewModelScope.launch {
+                val merchant = runCatching { merchantRepository.findOrCreate(trimmed) }.getOrNull()
+                refreshMerchants()
+                merchant?.let { m -> _state.update { it.copy(merchantId = m.id, dirty = true) } }
+            }
+        }
+
+        fun togglePendingReimbursement() = _state.update { it.copy(pendingReimbursement = !it.pendingReimbursement, dirty = true) }
+
+        fun toggleExcludedFromStats() = _state.update { it.copy(excludedFromStats = !it.excludedFromStats, dirty = true) }
+
+        fun setRefundText(text: String) {
+            val filtered = text.filter { it.isDigit() || it == '.' }.take(12)
+            _state.update { it.copy(refundText = filtered) }
+        }
+
+        fun clearRefundText() = _state.update { it.copy(refundText = "") }
+
+        /**
+         * 设置分期期数。
+         *
+         * 传 null 或非法值（< 2、> 60）都视为「不分期」——与其弹个错误挡住用户，
+         * 不如让他继续记账；真要分期，页面上会写明合法区间。
+         */
+        fun setInstallmentPeriods(periods: Int?) {
+            val valid = periods?.takeIf { InstallmentSchedule.isValidPeriods(it) }
+            _state.update { it.copy(installmentPeriods = valid, dirty = true) }
+        }
+
+        /**
+         * 对当前这笔支出发起退款（PRD 6.8 第 6 枚）。
+         *
+         * 退款是**另一笔收入流水**，不动原支出：金额、日期、分类都保持原样，
+         * 只在 `refundOfTxnId` 上建立关联。所以这里保存成功后只刷新「已退金额」，
+         * 页面上的金额输入框一个字符都不改。
+         */
+        fun submitRefund() {
+            val s = _state.value
+            val originalId = s.editingId ?: return
+            val cents = s.refundCents
+            if (cents <= 0L) {
+                _state.update { it.copy(error = "请输入退款金额") }
+                return
+            }
+            viewModelScope.launch {
+                _state.update { it.copy(saving = true, error = null) }
+                when (val result = refundTxn(originalId, cents)) {
+                    is AppResult.Success -> {
+                        val total = runCatching { txnRepository.refundedTotal(originalId) }.getOrDefault(0L)
+                        _state.update { it.copy(saving = false, refundedCents = total, refundText = "") }
+                        _events.emit(EditorEvent.Message("已记退款 ¥${MoneyFormatter.centsToYuan(cents)}"))
+                    }
+                    is AppResult.Failure ->
+                        _state.update { it.copy(saving = false, error = result.error.message) }
+                }
+            }
+        }
+
+        /**
+         * 保存成功后顺手建分期计划。
+         *
+         * 必须在流水落库之后：`installment.txnId` 要指向真实 id。失败不阻断保存——
+         * 账已经记上了，分期没建成就退回去重新点一下，比整笔作废轻得多。
+         */
+        private suspend fun createInstallment(
+            txnId: String,
+            s: EditorUiState,
+            periods: Int,
+        ) {
+            val account = s.accounts.firstOrNull { it.id == s.accountId } ?: return
+            val cents = s.effectiveAmount ?: return
+            val cycle = BillCycleCalculator.of(DateUtils.today(), account.billDay ?: 1, account.repayDay ?: 20)
+            runCatching {
+                installmentRepository.upsert(
+                    Installment(
+                        id = SeedData.newId("ins"),
+                        scope = InstallmentScope.TXN,
+                        txnId = txnId,
+                        accountId = account.id,
+                        principalCents = cents,
+                        periods = periods,
+                        startBillKey = cycle.billKey,
+                        createdAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+        }
+
+        /**
+         * 「再记」成功后清场，页面留在原地。
+         *
+         * 保留 `type` / `categoryId` / `accountId` / `dateTime`——连续记同一天的同类账是主场景；
+         * 金额、备注、照片、标签、商家、报销、退款、分期全部清掉，否则下一笔会拖着上一笔的尾巴。
+         */
+        private fun resetForNext() {
+            _state.update {
+                it.copy(
+                    saving = false,
+                    calc = CalcState(),
+                    note = "",
+                    photoPath = null,
+                    selectedTagIds = emptySet(),
+                    merchantId = null,
+                    pendingReimbursement = false,
+                    excludedFromStats = false,
+                    refundText = "",
+                    installmentPeriods = null,
+                    error = null,
+                    dirty = false,
+                )
+            }
+        }
+
+        /** 常用标签：按使用次数取前 10 个（标签抽屉默认也按这个顺序排）。 */
         fun quickTags(): List<Tag> = _state.value.tags.sortedByDescending { it.usageCount }.take(10)
 
         // ---------- 保存 ----------
 
-        fun submit() {
+        fun submit(stayOpen: Boolean = false) {
             val s = _state.value
             if (s.saving) return
             // 组合支付时金额由各账户合计决定，不吃计算器的值
@@ -563,7 +809,7 @@ class EditorViewModel
                 return
             }
             if (s.splitMode) {
-                submitSplit(s)
+                submitSplit(s, stayOpen)
                 return
             }
             val draft =
@@ -577,6 +823,10 @@ class EditorViewModel
                     feeCents = if (s.type == TxnType.TRANSFER) s.feeCents else 0,
                     dateTime = s.dateTime,
                     note = s.note,
+                    excludedFromStats = s.excludedFromStats,
+                    pendingReimbursement = s.pendingReimbursement,
+                    merchantId = s.merchantId,
+                    merchantName = s.merchantName,
                     photoPath = s.photoPath,
                 )
             viewModelScope.launch {
@@ -585,8 +835,14 @@ class EditorViewModel
                     is AppResult.Success -> {
                         rememberSelection(s)
                         saveTags(result.data, s.selectedTagIds)
-                        _state.update { it.copy(saving = false) }
-                        _events.emit(EditorEvent.Saved(result.data))
+                        s.installmentPeriods?.let { createInstallment(result.data, s, it) }
+                        if (stayOpen) {
+                            resetForNext()
+                            _events.emit(EditorEvent.SavedAndNext(result.data, cents))
+                        } else {
+                            _state.update { it.copy(saving = false) }
+                            _events.emit(EditorEvent.Saved(result.data))
+                        }
                     }
                     is AppResult.Failure -> {
                         _state.update { it.copy(saving = false, error = result.error.message) }
@@ -604,7 +860,10 @@ class EditorViewModel
          * 编辑模式下先把原流水软删除再落新的：一笔账拆成 N 条之后，原来那条已经没有意义了。
          * 放回收站而不是物理删除，用户后悔还能捞回来。
          */
-        private fun submitSplit(s: EditorUiState) {
+        private fun submitSplit(
+            s: EditorUiState,
+            stayOpen: Boolean = false,
+        ) {
             val parts = s.splits.filterValues { it > 0L }
             if (parts.size < 2) {
                 _state.update { it.copy(error = "组合支付至少要两个账户各出一部分") }
@@ -630,6 +889,10 @@ class EditorViewModel
                             accountId = accountId,
                             dateTime = s.dateTime,
                             note = note,
+                            excludedFromStats = s.excludedFromStats,
+                            pendingReimbursement = s.pendingReimbursement,
+                            merchantId = s.merchantId,
+                            merchantName = s.merchantName,
                             photoPath = s.photoPath,
                         )
                     when (val result = saveTxn(draft)) {
@@ -647,8 +910,14 @@ class EditorViewModel
                 if (finalId != null) {
                     s.editingId?.let { runCatching { txnRepository.softDelete(it, System.currentTimeMillis()) } }
                     rememberSelection(s)
-                    _state.update { it.copy(saving = false) }
-                    _events.emit(EditorEvent.Saved(finalId))
+                    s.installmentPeriods?.let { createInstallment(finalId, s, it) }
+                    if (stayOpen) {
+                        resetForNext()
+                        _events.emit(EditorEvent.SavedAndNext(finalId, s.splitTotal))
+                    } else {
+                        _state.update { it.copy(saving = false) }
+                        _events.emit(EditorEvent.Saved(finalId))
+                    }
                 }
             }
         }

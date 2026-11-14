@@ -5,14 +5,18 @@ import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
+import com.xxjz.ledger.domain.model.InstallmentScope
 import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
+import com.xxjz.ledger.domain.usecase.RefundTxnUseCase
 import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
+import com.xxjz.ledger.testutil.FakeInstallmentRepository
+import com.xxjz.ledger.testutil.FakeMerchantRepository
 import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTagRepository
 import com.xxjz.ledger.testutil.FakeTemplateRepository
@@ -43,6 +47,8 @@ class EditorViewModelTest {
     private val accountRepo = FakeAccountRepository()
     private val templateRepo = FakeTemplateRepository()
     private val tagRepo = FakeTagRepository()
+    private val merchantRepo = FakeMerchantRepository()
+    private val installmentRepo = FakeInstallmentRepository()
     private val settings = FakeSettingsDataStore()
 
     @BeforeEach
@@ -74,6 +80,9 @@ class EditorViewModelTest {
                 recordDebtOp = RecordDebtOpUseCase(accountRepo, txnRepo),
                 saveDebtAccount = SaveDebtAccountUseCase(accountRepo, RecordDebtOpUseCase(accountRepo, txnRepo)),
                 tagRepository = tagRepo,
+                merchantRepository = merchantRepo,
+                installmentRepository = installmentRepo,
+                refundTxn = RefundTxnUseCase(txnRepo, categoryRepo),
             )
         return vm
     }
@@ -612,5 +621,226 @@ class EditorViewModelTest {
             advanceUntilIdle()
 
             assertEquals("acc-2", settings.value.lastPayAccountId)
+        }
+
+    // ---------- v1.9.3 第 6、7 条：状态胶囊、再记、退款、分期 ----------
+
+    @Test
+    fun `保存条件不满足时说清缺什么`() =
+        runTest(dispatcher.scheduler) {
+            categoryRepo.categories = emptyList()
+            accountRepo.items.clear()
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals("请输入金额", vm.state.value.saveBlocker)
+            vm.digit('5')
+            assertEquals("请选择分类", vm.state.value.saveBlocker)
+
+            // 有分类没账户：提示账户，而不是继续抱怨金额
+            categoryRepo.categories = listOf(Category(id = "food", name = "餐饮", type = TxnType.EXPENSE))
+            val vm2 = viewModel()
+            advanceUntilIdle()
+            vm2.digit('5')
+            assertEquals("请选择账户", vm2.state.value.saveBlocker)
+        }
+
+    @Test
+    fun `再记保存后留在原地并清掉上一笔的尾巴`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            accountRepo.items["acc-2"] = Account(id = "acc-2", name = "微信", type = AccountType.SAVINGS)
+            vm.selectCategory("breakfast")
+            vm.setNote("午饭")
+            vm.togglePendingReimbursement()
+            vm.digit('5')
+            vm.digit('0')
+
+            vm.events.test {
+                vm.submitOrEvaluate(stayOpen = true)
+                advanceUntilIdle()
+                val event = awaitItem()
+                assertTrue(event is EditorEvent.SavedAndNext, "再记不能发 Saved，否则页面会关掉")
+                assertEquals(5000L, (event as EditorEvent.SavedAndNext).amountCents, "Snackbar 要报这笔的金额")
+            }
+
+            val state = vm.state.value
+            assertEquals(1, txnRepo.items.size)
+            // 清掉的：金额、备注、报销标记
+            assertEquals("0", state.calc.display)
+            assertEquals("", state.note)
+            assertFalse(state.pendingReimbursement)
+            // 留住的：类型、分类、账户、日期（连续记同类账是主场景）
+            assertEquals(TxnType.EXPENSE, state.type)
+            assertEquals("breakfast", state.categoryId)
+            assertEquals("acc-1", state.accountId)
+            assertNull(state.editingId, "再记之后仍然是新建状态")
+        }
+
+    @Test
+    fun `再记会把商家与标签一起清掉`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.createMerchant("星巴克")
+            advanceUntilIdle()
+            vm.toggleTag("t1")
+            vm.digit('8')
+
+            vm.submitOrEvaluate(stayOpen = true)
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.merchantId)
+            assertTrue(vm.state.value.selectedTagIds.isEmpty())
+        }
+
+    @Test
+    fun `待报销与不计入收支都落库`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.togglePendingReimbursement()
+            vm.toggleExcludedFromStats()
+            vm.digit('3')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            val txn = txnRepo.items.values.single()
+            assertTrue(txn.pendingReimbursement)
+            assertTrue(txn.excludedFromStats)
+        }
+
+    @Test
+    fun `新建商家后自动选中并写进流水`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.createMerchant("星巴克")
+            advanceUntilIdle()
+
+            val merchant = merchantRepo.items.values.single()
+            assertEquals(merchant.id, vm.state.value.merchantId)
+            assertEquals("星巴克", vm.state.value.merchantName)
+
+            vm.digit('3')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            val txn = txnRepo.items.values.single()
+            assertEquals(merchant.id, txn.merchantId)
+            // merchantName 是冗余列：搜索、CSV 导出、年报商户榜都直接读它
+            assertEquals("星巴克", txn.merchantName)
+        }
+
+    @Test
+    fun `退款会生成一笔独立收入并刷新已退金额`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.digit('0')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val originalId = txnRepo.items.keys.single()
+
+            vm.loadForEdit(originalId)
+            advanceUntilIdle()
+            vm.setRefundText("20")
+            vm.submitRefund()
+            advanceUntilIdle()
+
+            assertEquals(2, txnRepo.items.size, "退款是一笔新流水，不是改原账")
+            val refund = txnRepo.items.values.first { it.id != originalId }
+            assertEquals(TxnType.INCOME, refund.type)
+            assertEquals(20_00L, refund.amount)
+            assertEquals(originalId, refund.refundOfTxnId)
+            assertEquals(20_00L, vm.state.value.refundedCents)
+            assertEquals(50_00L, txnRepo.items.getValue(originalId).amount, "原支出金额不能被退款改掉")
+        }
+
+    @Test
+    fun `退款超过可退金额被拒绝`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.digit('5')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+            val originalId = txnRepo.items.keys.single()
+
+            vm.loadForEdit(originalId)
+            advanceUntilIdle()
+            vm.setRefundText("999")
+            vm.submitRefund()
+            advanceUntilIdle()
+
+            assertEquals(1, txnRepo.items.size, "超退不能写库")
+            assertTrue(vm.state.value.error != null)
+        }
+
+    @Test
+    fun `分期只对信用卡支出开放`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["credit-1"] =
+                Account(id = "credit-1", name = "招行", type = AccountType.CREDIT, billDay = 15, repayDay = 20)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+
+            // 储蓄卡支出：不分期
+            vm.selectAccount("acc-1")
+            assertFalse(vm.state.value.installmentAvailable)
+
+            // 信用卡支出：可以分期
+            vm.selectAccount("credit-1")
+            assertTrue(vm.state.value.installmentAvailable)
+
+            // 信用卡收入：也不分期（没有「收入分几期还」这回事）
+            vm.setType(TxnType.INCOME)
+            assertFalse(vm.state.value.installmentAvailable)
+        }
+
+    @Test
+    fun `分期期数越界视为不分期`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setInstallmentPeriods(1)
+            assertNull(vm.state.value.installmentPeriods)
+            vm.setInstallmentPeriods(61)
+            assertNull(vm.state.value.installmentPeriods)
+            vm.setInstallmentPeriods(3)
+            assertEquals(3, vm.state.value.installmentPeriods)
+        }
+
+    @Test
+    fun `信用卡支出保存后会创建分期计划`() =
+        runTest(dispatcher.scheduler) {
+            accountRepo.items["credit-1"] =
+                Account(id = "credit-1", name = "招行", type = AccountType.CREDIT, billDay = 15, repayDay = 20)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.selectAccount("credit-1")
+            vm.setInstallmentPeriods(3)
+            vm.digit('9')
+            vm.digit('0')
+            vm.digit('0')
+            vm.submitOrEvaluate()
+            advanceUntilIdle()
+
+            val txn = txnRepo.items.values.single()
+            val plan = installmentRepo.items.values.single()
+            assertEquals(InstallmentScope.TXN, plan.scope)
+            assertEquals(txn.id, plan.txnId, "分期必须挂在真实流水上，所以只能在保存之后建")
+            assertEquals("credit-1", plan.accountId)
+            assertEquals(900_00L, plan.principalCents)
+            assertEquals(3, plan.periods)
         }
 }

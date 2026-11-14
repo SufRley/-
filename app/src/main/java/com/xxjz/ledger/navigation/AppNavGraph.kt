@@ -77,6 +77,8 @@ internal fun NavGraphBuilder.appNavGraph(
             templateId = entry.arguments?.getString(Routes.ARG_TEMPLATE_ID)?.takeIf { it.isNotEmpty() },
             onDismiss = { navController.popBackStack() },
             onSaved = { navController.popBackStack() },
+            onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+            onOpenTemplates = { navController.navigate(Routes.TEMPLATES) },
         )
     }
     composable(Routes.LEDGER) {

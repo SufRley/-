@@ -27,6 +27,10 @@ data class TxnDraft(
     val note: String = "",
     val excludedFromStats: Boolean = false,
     val pendingReimbursement: Boolean = false,
+    /** 商家 id（v1.9.3 第 6.8 条）：`null` 表示没选商家。 */
+    val merchantId: String? = null,
+    /** 商家名冗余落库：搜索、CSV 导出、年报「商户榜」都直接读这个字段。 */
+    val merchantName: String? = null,
     /** 收据照片路径（v1.9.1），null 表示没有附图。 */
     val photoPath: String? = null,
 )
@@ -74,6 +78,9 @@ class SaveTxnUseCase
                     note = draft.note.trim(),
                     excludedFromStats = draft.excludedFromStats,
                     pendingReimbursement = draft.pendingReimbursement && draft.type == TxnType.EXPENSE,
+                    // 商家随 draft 走，不沿用旧值：编辑页会把原值带进来，所以「清空商家」也能生效
+                    merchantId = draft.merchantId,
+                    merchantName = draft.merchantName,
                     // 编辑时不传 photoPath 就沿用原图：否则改个备注会把附图弄丢
                     photoPath = draft.photoPath ?: existing?.photoPath,
                     createdAt = existing?.createdAt ?: now,

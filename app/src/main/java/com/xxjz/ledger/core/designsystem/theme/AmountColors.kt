@@ -8,6 +8,9 @@ import androidx.compose.ui.graphics.Color
 /**
  * 收支语义配色。AC-41 要求「收入/支出颜色反转」可以一键全局生效，
  * 所有金额组件必须从这里取色，禁止写死 Color.Red/Color.Green。
+ *
+ * v1.9.3 第 6 条补了 [transfer] 与 [debt]：记账页的大号金额要按类型着色，
+ * 转账和借贷不属于收支，用红绿会让人误以为产生了盈亏。
  */
 data class AmountColors(
     val income: Color,
@@ -16,6 +19,10 @@ data class AmountColors(
     val overBudget: Color,
     /** true 表示已开启配色反转（收入=红，支出=绿）。 */
     val reversed: Boolean = false,
+    /** 转账：中性搬运，蓝色。不受反转影响。 */
+    val transfer: Color = TransferBlueLight,
+    /** 借贷：牵扯他人，紫色。不受反转影响。 */
+    val debt: Color = DebtPurpleLight,
 )
 
 val LocalAmountColors =

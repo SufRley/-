@@ -73,6 +73,8 @@ fun amountColorsFor(
         warning = WarningAmber,
         overBudget = OverBudgetRed,
         reversed = reversed,
+        transfer = if (dark) TransferBlueDark else TransferBlueLight,
+        debt = if (dark) DebtPurpleDark else DebtPurpleLight,
     )
 }
 

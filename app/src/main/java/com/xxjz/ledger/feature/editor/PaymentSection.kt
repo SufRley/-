@@ -1,8 +1,7 @@
 package com.xxjz.ledger.feature.editor
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -13,12 +12,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Handshake
+import androidx.compose.material.icons.filled.Payments
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -27,13 +30,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -41,6 +40,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.DebtDirection
 import com.xxjz.ledger.domain.model.TxnType
 
@@ -48,12 +48,13 @@ import com.xxjz.ledger.domain.model.TxnType
 private val SplitInputWidth = 108.dp
 
 /**
- * 付款账户区（PRD v1.9.1 第 5 条）。
+ * 付款账户区（PRD v1.9.3 第 6.6 条）。
  *
- * 一行解决三件事：左边「付款账户」、右侧当前账户、末尾「单选 / 组合」切换。
- * - 单选：点右侧账户名拉起账户选择弹窗。
- * - 组合：展开成一组账户行，每个账户后面就是一个金额输入框；
- *   填了钱的账户会在上方浮出一枚可 × 掉的标签，一眼看清「谁出了多少」。
+ * 一整行讲清三件事：左边「付款账户」、右侧当前账户（图标 + 名字）、行尾一个小图标切「单选 / 组合」。
+ * 与 v1.9.1 的区别是两个减法：
+ * - 「单选 / 组合」的两段文字胶囊收成一个 [Icons.Filled.SwapHoriz] 图标——整行要容得下账户名与金额，
+ *   再摆两个汉字胶囊就把名字挤没了；
+ * - 日期胶囊从这里搬走，统一进状态胶囊行（[EditorStateChips]），日期/时间/标签挨着排才顺手。
  */
 @Composable
 internal fun PaymentSection(
@@ -70,61 +71,68 @@ internal fun PaymentSection(
     Column(Modifier.fillMaxWidth()) {
         if (state.type == TxnType.DEBT) {
             DebtDirectionRow(current = state.debtDirection, onSelect = viewModel::setDebtDirection)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             AccountLine(
                 label = "对方",
-                value = state.debtAccountName ?: "选择借贷账户",
+                value = state.debtAccountName,
+                placeholder = "选择借贷账户",
                 tag = "row_debt_account",
                 onClick = onPickDebtAccount,
+                icon = accountGlyphOf(state.debtAccounts.firstOrNull { it.id == state.debtAccountId }?.type),
             )
             if (state.debtAccounts.isEmpty()) {
                 TextButton(onClick = onNewDebt, modifier = Modifier.testTag("btn_new_debt_account")) {
                     Text("＋ 新建借贷账户")
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(2.dp))
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             AccountLine(
                 label = if (state.type == TxnType.DEBT) "资金账户" else "付款账户",
-                value =
-                    state.accountName ?: when (state.type) {
+                value = state.accountName,
+                placeholder =
+                    when (state.type) {
                         TxnType.TRANSFER -> "选择转出账户"
                         TxnType.DEBT -> "选择资金账户"
-                        else -> "选择账户"
+                        else -> "请选择"
                     },
                 tag = "row_account",
                 onClick = onPickAccount,
                 modifier = Modifier.weight(1f),
+                icon = accountGlyphOf(state.accounts.firstOrNull { it.id == state.accountId }?.type),
+                trailing =
+                    if (splitAvailable) {
+                        {
+                            SplitModeButton(
+                                split = state.splitMode,
+                                count = state.splits.size,
+                                onToggle = { viewModel.setSplitMode(!state.splitMode) },
+                            )
+                        }
+                    } else {
+                        null
+                    },
             )
-            if (splitAvailable) {
-                Spacer(Modifier.width(8.dp))
-                SplitModeSwitch(split = state.splitMode, onChange = viewModel::setSplitMode)
-            }
         }
 
         if (state.type == TxnType.TRANSFER) {
-            Spacer(Modifier.height(8.dp))
             AccountLine(
                 label = "转入账户",
-                value = state.toAccountName ?: "选择转入账户",
+                value = state.toAccountName,
+                placeholder = "选择转入账户",
                 tag = "row_to_account",
                 onClick = onPickToAccount,
+                icon = accountGlyphOf(state.accounts.firstOrNull { it.id == state.toAccountId }?.type),
             )
             FeeField(value = state.feeText, onChange = viewModel::setFee)
         }
 
         if (splitAvailable && state.splitMode) {
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             SplitPanel(state = state, viewModel = viewModel)
         }
-
-        Spacer(Modifier.height(8.dp))
-        DateChip(state = state, onDateChange = viewModel::setDateTime)
     }
 }
 
@@ -244,101 +252,92 @@ private fun SplitAccountRow(
     }
 }
 
-/** 「付款账户」一行：左边标签、右边当前账户 + 小箭头暗示可点。 */
+/**
+ * 「付款账户」整行：左标签、右账户（图标 + 名字），行尾可以挂一个组合切换图标。
+ *
+ * 整行都可点（不是只有账户名可点）——一行里最自然的手势就是把整行当按钮。
+ * 未选账户时占位文案用 `error` 色，它是个「必须填但还没填」的字段，不是普通灰提示。
+ */
 @Composable
 private fun AccountLine(
     label: String,
-    value: String,
+    value: String?,
+    placeholder: String,
     tag: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = modifier.fillMaxWidth().testTag(tag),
+    Row(
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        if (value == null) {
             Text(
-                text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color =
-                    if (value.startsWith("选择")) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                text = placeholder,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.error,
                 maxLines = 1,
             )
+        } else {
             Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                imageVector = icon ?: Icons.Filled.Payments,
                 contentDescription = null,
                 modifier = Modifier.size(18.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
         }
+        trailing?.invoke()
     }
 }
 
 /**
- * 单选 / 组合切换。
+ * 组合切换：一个 `SwapHoriz` 图标。
  *
- * 做成胶囊里的两段而不是一个 Switch：一个开关说不清「组合」是什么意思，
- * 两个词摆在那里更直白，也顺带告诉用户这功能存在。
+ * 图标按钮不抢眼但也不隐藏——旁边账户名后面会追加「等 N 个」，说明这个开关现在是什么状态。
  */
 @Composable
-private fun SplitModeSwitch(
+private fun SplitModeButton(
     split: Boolean,
-    onChange: (Boolean) -> Unit,
+    count: Int,
+    onToggle: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.testTag("split_switch"),
-    ) {
-        Row(Modifier.padding(2.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Segment(label = "单选", selected = !split, tag = "mode_single") { onChange(false) }
-            Segment(label = "组合", selected = split, tag = "mode_split") { onChange(true) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (split && count > 0) {
+            Text(
+                text = "等 $count 个",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-    }
-}
-
-@Composable
-private fun Segment(
-    label: String,
-    selected: Boolean,
-    tag: String,
-    onClick: () -> Unit,
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(50),
-        color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
-        modifier = Modifier.testTag(tag),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color =
-                if (selected) {
-                    MaterialTheme.colorScheme.onSurface
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-        )
+        IconButton(onClick = onToggle, modifier = Modifier.size(36.dp).testTag("split_switch")) {
+            Icon(
+                imageVector = Icons.Filled.SwapHoriz,
+                contentDescription = if (split) "改为单账户支付" else "改为组合支付",
+                modifier = Modifier.size(20.dp),
+                tint =
+                    if (split) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+            )
+        }
     }
 }
 
@@ -380,40 +379,34 @@ private fun DebtDirectionRow(
     }
 }
 
-/** 日期胶囊：点了弹日期选择器。 */
+/**
+ * 账户类型 → 小图标。
+ *
+ * 只按类型分，不按账户名猜：账户名是用户随手起的（「Q 卡」「招行」），猜不准反而更乱。
+ */
+internal fun accountGlyphOf(type: AccountType?): ImageVector =
+    when (type) {
+        AccountType.CASH -> Icons.Filled.Payments
+        AccountType.SAVINGS -> Icons.Filled.AccountBalance
+        AccountType.CREDIT -> Icons.Filled.CreditCard
+        AccountType.INVEST -> Icons.Filled.TrendingUp
+        AccountType.DEBT -> Icons.Filled.Handshake
+        null -> Icons.Filled.Payments
+    }
+
+/** 转账手续费输入。 */
 @Composable
-private fun DateChip(
-    state: EditorUiState,
-    onDateChange: (Long) -> Unit,
+internal fun FeeField(
+    value: String,
+    onChange: (String) -> Unit,
 ) {
-    var open by remember { mutableStateOf(false) }
-    Surface(
-        onClick = { open = true },
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-        modifier = Modifier.testTag("chip_date"),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(5.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-            Spacer(Modifier.size(6.dp))
-            Text(
-                text = friendlyDate(state.dateTime),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-    if (open) {
-        EditorDatePickerDialog(
-            initialMillis = state.dateTime,
-            onPick = {
-                onDateChange(it)
-                open = false
-            },
-            onDismiss = { open = false },
-        )
-    }
+    Spacer(Modifier.height(8.dp))
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text("手续费") },
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth().testTag("fee_input"),
+    )
 }
