@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Upsert
 import com.xxjz.ledger.data.local.entity.LedgerEntity
+import kotlinx.coroutines.flow.Flow
 
 /** 简易键值元数据表，记录种子版本等。 */
 @Entity(tableName = "app_meta")
@@ -29,6 +30,10 @@ interface MetaDao {
     /** 按前缀取全部键值（v1.8.0：资产变化事件以 `asset_event_<ts>_<seq>` 为键批量读取）。 */
     @Query("SELECT * FROM app_meta WHERE `key` LIKE :prefix || '%' ORDER BY `key` DESC")
     suspend fun listByPrefix(prefix: String): List<MetaEntity>
+
+    /** [listByPrefix] 的响应式版本，供资产报表订阅变化。 */
+    @Query("SELECT * FROM app_meta WHERE `key` LIKE :prefix || '%' ORDER BY `key` DESC")
+    fun observeByPrefix(prefix: String): Flow<List<MetaEntity>>
 }
 
 /** 账本（多账本预留，v1 只有默认账本）。 */

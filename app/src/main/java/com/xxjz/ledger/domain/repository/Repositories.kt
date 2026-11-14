@@ -41,6 +41,15 @@ interface TxnRepository {
 
     fun observeTotalCount(): Flow<Int>
 
+    /**
+     * 资产报表用：**含回收站**的全部流水，按时间升序（v1.8.0）。
+     *
+     * 净资产回放要靠「删除时刻」把该笔影响反向撤销，因此必须能读到已软删的流水。
+     */
+    fun observeAllForReport(): Flow<List<Txn>> = observeInRange(0L, Long.MAX_VALUE)
+
+    suspend fun allForReport(): List<Txn> = listInRange(0L, Long.MAX_VALUE)
+
     /** 区间内的收入与支出（分）。 */
     fun observeTotals(
         start: Long,

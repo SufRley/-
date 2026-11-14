@@ -154,6 +154,68 @@ class PerformanceTest {
         }
 
     @Test
+    fun `5000 笔资产报表回放在 400ms 内完成`() =
+        runTest {
+            seedTxns()
+            val rows = db.txnDao().listAllIncludingDeleted().map { it.toModelForPerf() }
+            val accounts =
+                (0 until 3).map { i ->
+                    com.xxjz.ledger.domain.model.Account(
+                        id = "acc_$i",
+                        name = "账户$i",
+                        type = com.xxjz.ledger.domain.model.AccountType.SAVINGS,
+                        initialBalance = 100_000L,
+                    )
+                }
+            // 预热：首次调用含类加载与 JIT
+            com.xxjz.ledger.domain.usecase.NetWorthReplay.replay(0, rows)
+
+            val begin = System.nanoTime()
+            val points =
+                com.xxjz.ledger.domain.usecase.NetWorthReplay.replay(
+                    com.xxjz.ledger.domain.usecase.NetWorthReplay.initialNet(accounts),
+                    rows,
+                    emptyList(),
+                )
+            val costMs = (System.nanoTime() - begin) / 1_000_000
+            println("NetWorthReplay(5000) = ${costMs}ms，步骤数=${points.size}")
+
+            // PRD 八：净资产回算与变化记录需与现有基准同量级（聚合 ≤1ms / 列表 ≤8ms 之外的单次离线计算）
+            assertTrue("净资产回放耗时 ${costMs}ms，超过 400ms 上限", costMs < 400)
+            // 回放终点必须等于「初始 + 所有收支净额」，防止快但错
+            val expected =
+                300_000L +
+                    rows.sumOf {
+                        when (it.type) {
+                            TxnType.EXPENSE -> -it.amount
+                            TxnType.INCOME -> it.amount
+                            else -> 0L
+                        }
+                    }
+            assertEquals(expected, points.last().second)
+        }
+
+    /** 性能用例只关心金额与类型，字段映射从简。 */
+    private fun TxnEntity.toModelForPerf(): Txn =
+        Txn(
+            id = id,
+            type = TxnType.valueOf(type),
+            amount = amount,
+            categoryId = categoryId,
+            accountId = accountId,
+            toAccountId = toAccountId,
+            fee = fee,
+            dateTime = dateTime,
+            dateKey = dateKey,
+            note = note,
+            refundOfTxnId = refundOfTxnId,
+            parentTxnId = parentTxnId,
+            deletedAt = deletedAt,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+        )
+
+    @Test
     fun `5000 笔分组渲染在 200ms 内完成`() {
         val categories =
             (0 until 8).associate { i ->

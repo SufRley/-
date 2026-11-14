@@ -4,6 +4,8 @@ import com.xxjz.ledger.data.local.dao.MetaDao
 import com.xxjz.ledger.data.local.dao.MetaEntity
 import com.xxjz.ledger.domain.model.AssetEvent
 import com.xxjz.ledger.domain.model.AssetEventKind
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
@@ -39,6 +41,7 @@ class AssetEventStore
             val accountId: String? = null,
             val accountName: String = "",
             val deltaCents: Long = 0,
+            val amountAfterCents: Long? = null,
         )
 
         /** 记录一条事件；[seq] 用于同一毫秒内多条事件避免 key 冲突。 */
@@ -54,28 +57,32 @@ class AssetEventStore
                     accountId = event.accountId,
                     accountName = event.accountName,
                     deltaCents = event.deltaCents,
+                    amountAfterCents = event.amountAfterCents,
                 )
             val key = "$PREFIX${event.at}_${seq}_${event.id}"
             metaDao.put(MetaEntity(key, json.encodeToString(Row.serializer(), row)))
         }
 
         /** 全部事件，按时间倒序。解析失败的脏数据直接跳过，不让一条坏记录拖垮整个报表。 */
-        suspend fun listAll(): List<AssetEvent> =
-            metaDao
-                .listByPrefix(PREFIX)
-                .mapNotNull { entity ->
-                    runCatching {
-                        val row = json.decodeFromString(Row.serializer(), entity.value)
-                        AssetEvent(
-                            id = row.id,
-                            at = row.at,
-                            kind = runCatching { AssetEventKind.valueOf(row.kind) }.getOrElse { AssetEventKind.MARKET_VALUE },
-                            accountId = row.accountId,
-                            accountName = row.accountName,
-                            deltaCents = row.deltaCents,
-                        )
-                    }.getOrNull()
-                }.sortedByDescending { it.at }
+        suspend fun listAll(): List<AssetEvent> = metaDao.listByPrefix(PREFIX).mapNotNull(::parse)
+
+        /** 单条解析：脏数据直接跳过，不让一条坏记录拖垮整个报表。 */
+        private fun parse(entity: MetaEntity): AssetEvent? =
+            runCatching {
+                val row = json.decodeFromString(Row.serializer(), entity.value)
+                AssetEvent(
+                    id = row.id,
+                    at = row.at,
+                    kind = runCatching { AssetEventKind.valueOf(row.kind) }.getOrElse { AssetEventKind.MARKET_VALUE },
+                    accountId = row.accountId,
+                    accountName = row.accountName,
+                    deltaCents = row.deltaCents,
+                    amountAfterCents = row.amountAfterCents,
+                )
+            }.getOrNull()
+
+        /** 响应式版本：资产报表订阅用，改市值后列表即时刷新。 */
+        fun observeAll(): Flow<List<AssetEvent>> = metaDao.observeByPrefix(PREFIX).map { it.mapNotNull(::parse) }
 
         companion object {
             const val PREFIX = "asset_event_"

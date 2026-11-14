@@ -27,11 +27,21 @@ data class AssetEvent(
     /** 账户名快照，账户改名/删除后仍能显示。 */
     val accountName: String,
     /**
-     * 事件金额（分），含义随 [kind] 变：
-     * - [AssetEventKind.MARKET_VALUE]：本次调整到的市值（PRD D14 的展示口径）；
-     * - [AssetEventKind.INITIAL_BALANCE]：修改后的初始余额。
+     * 本次事件对**净资产**的影响（分），正数增加、负数减少。
+     *
+     * - [AssetEventKind.MARKET_VALUE]：新市值 − 旧市值（差额，不是新市值本身）；
+     * - [AssetEventKind.INITIAL_BALANCE]：新初始余额 − 旧初始余额。
+     *
+     * 统一存「差额」而不是「新值」，是因为资产报表的净资产回放要按差额累加；
+     * 用户界面上要显示的「调整到 xx 元」由 [amountAfterCents] 承载。
      */
     val deltaCents: Long,
+    /**
+     * 事件发生后的目标值（分）：改市值为新市值、改初始余额为新初始余额。
+     *
+     * 为 null 表示是 v1.8.0 早期写入的旧记录（只有 deltaCents），展示时退化为显示差额。
+     */
+    val amountAfterCents: Long? = null,
     /** 幂等键：同一事件重复写入时覆盖。 */
     val id: String,
 )

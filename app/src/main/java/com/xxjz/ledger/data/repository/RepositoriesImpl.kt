@@ -343,6 +343,10 @@ class TxnRepositoryImpl
 
         override fun observeTotalCount(): Flow<Int> = dao.observeTotalCount()
 
+        override fun observeAllForReport(): Flow<List<Txn>> = dao.observeAllForReport().map { list -> list.map { it.toModel() } }
+
+        override suspend fun allForReport(): List<Txn> = dao.listAllIncludingDeleted().map { it.toModel() }
+
         override fun observeTotals(
             start: Long,
             end: Long,
@@ -608,8 +612,10 @@ class AccountRepositoryImpl
                             kind = AssetEventKind.MARKET_VALUE,
                             accountId = id,
                             accountName = entity.name,
-                            // PRD D14：记录里显示「调整到的市值」，不是差额；差额由前后市值推得
-                            deltaCents = next,
+                            // deltaCents 存差额（净资产回放按差额累加），
+                            // amountAfterCents 存调整到的新市值（PRD D14 的展示口径）
+                            deltaCents = delta,
+                            amountAfterCents = next,
                         ),
                     )
                 }

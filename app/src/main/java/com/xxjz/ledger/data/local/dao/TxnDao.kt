@@ -91,7 +91,7 @@ interface TxnDao {
     )
     suspend fun listPendingReimbursement(): List<TxnEntity>
 
-    /** 备份用：含回收站里的账目。 */
+    /** 备份与资产报表用：含回收站里的账目，按时间升序（净资产回放需要删除时刻）。 */
     @Query("SELECT * FROM txn ORDER BY dateTime ASC, createdAt ASC")
     suspend fun listAllIncludingDeleted(): List<TxnEntity>
 
@@ -101,6 +101,15 @@ interface TxnDao {
 
     @Query("SELECT COUNT(*) FROM txn WHERE deletedAt IS NOT NULL")
     fun observeDeletedCount(): Flow<Int>
+
+    /**
+     * 资产报表用：**含回收站**的全部流水，按时间升序。
+     *
+     * 为什么要给报表一个单独的查询：净资产回放需要「软删除时刻」把该笔影响反向撤销，
+     * 如果沿用只返回未删除流水的方法，删除这件事就从曲线里消失了。
+     */
+    @Query("SELECT * FROM txn ORDER BY dateTime ASC, createdAt ASC")
+    fun observeAllForReport(): Flow<List<TxnEntity>>
 
     // ---------- 统计 ----------
 
