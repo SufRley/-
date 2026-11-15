@@ -252,4 +252,127 @@ class ReimbursementViewModelTest {
             assertTrue(txnRepo.items.values.none { it.type == TxnType.INCOME })
             assertTrue(txnRepo.items.getValue("t1").pendingReimbursement)
         }
+
+    // ---- v1.9.4 第 5 条：待报销按日期分组 ----
+
+    private fun pendingAt(
+        id: String,
+        amount: Long,
+        date: LocalDate,
+        time: LocalTime = LocalTime.NOON,
+    ) {
+        val millis = DateUtils.toMillis(date, time)
+        txnRepo.items[id] =
+            Txn(
+                id = id,
+                type = TxnType.EXPENSE,
+                amount = amount,
+                categoryId = "exp_1_0",
+                accountId = "acc-1",
+                dateTime = millis,
+                dateKey = DateUtils.dateKeyOf(date),
+                note = "note-$id",
+                pendingReimbursement = true,
+                createdAt = millis,
+                updatedAt = millis,
+            )
+    }
+
+    private fun rowsOf(vararg ids: String): List<ReimbursementRow> =
+        ids.map { id ->
+            ReimbursementRow(
+                txn = txnRepo.items.getValue(id),
+                categoryName = "餐饮",
+                dateLabel = DateUtils.friendlyDate(DateUtils.toDate(txnRepo.items.getValue(id).dateTime)),
+            )
+        }
+
+    @Test
+    @DisplayName("按 dateKey 分组，日期倒序，最近的一天在最上")
+    fun groupsSortedByDateDesc() =
+        runTest {
+            pendingAt("a", 1_000, today.minusDays(2))
+            pendingAt("b", 2_000, today)
+            pendingAt("c", 3_000, today.minusDays(1))
+
+            val groups = pendingGroupsOf(rowsOf("a", "b", "c"))
+
+            assertEquals(
+                listOf(DateUtils.dateKeyOf(today), DateUtils.dateKeyOf(today.minusDays(1)), DateUtils.dateKeyOf(today.minusDays(2))),
+                groups.map { it.dateKey },
+            )
+        }
+
+    @Test
+    @DisplayName("组内按时间倒序，同一时刻按 createdAt 倒序")
+    fun rowsInsideGroupSortedByTimeDesc() =
+        runTest {
+            pendingAt("morning", 1_000, today, LocalTime.of(8, 0))
+            pendingAt("evening", 2_000, today, LocalTime.of(20, 0))
+            pendingAt("noon", 3_000, today, LocalTime.NOON)
+
+            val group = pendingGroupsOf(rowsOf("morning", "evening", "noon")).single()
+
+            assertEquals(listOf("evening", "noon", "morning"), group.rows.map { it.txn.id })
+        }
+
+    @Test
+    @DisplayName("组头给出该组笔数与合计")
+    fun groupHeaderCountsAndTotal() =
+        runTest {
+            pendingAt("a", 1_000, today)
+            pendingAt("b", 2_500, today)
+            pendingAt("c", 700, today.minusDays(1))
+
+            val groups = pendingGroupsOf(rowsOf("a", "b", "c"))
+
+            assertEquals(2, groups.first().rows.size)
+            assertEquals(3_500L, groups.first().total)
+            assertEquals(1, groups.last().rows.size)
+            assertEquals(700L, groups.last().total)
+        }
+
+    @Test
+    @DisplayName("组头日期文案用「今天 / 昨天 / M月d日」")
+    fun groupLabelUsesFriendlyDate() =
+        runTest {
+            pendingAt("a", 1_000, today)
+            pendingAt("b", 1_000, today.minusDays(1))
+
+            val labels = pendingGroupsOf(rowsOf("a", "b")).map { it.dateLabel }
+
+            assertEquals(listOf("今天", "昨天"), labels)
+        }
+
+    @Test
+    @DisplayName("同一天拆成同一组，不会因为跨年的同名文案被合并")
+    fun sameDaySingleGroup() =
+        runTest {
+            pendingAt("a", 1_000, today, LocalTime.of(9, 0))
+            pendingAt("b", 1_000, today, LocalTime.of(21, 0))
+
+            assertEquals(1, pendingGroupsOf(rowsOf("a", "b")).size)
+        }
+
+    @Test
+    @DisplayName("空列表不产生组头")
+    fun emptyListNoGroups() =
+        runTest {
+            assertTrue(pendingGroupsOf(emptyList()).isEmpty())
+        }
+
+    @Test
+    @DisplayName("状态里仍带着全部待报销笔数，顶部汇总不被折叠影响")
+    fun totalCountUnaffectedByGrouping() =
+        runTest(dispatcher.scheduler) {
+            pendingAt("a", 1_000, today)
+            pendingAt("b", 2_000, today.minusDays(1))
+            pendingAt("c", 3_000, today.minusDays(2))
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals(3, vm.state.value.pending.size)
+            assertEquals(6_000L, vm.state.value.pendingTotal)
+            assertEquals(3, pendingGroupsOf(vm.state.value.pending).size)
+        }
 }
