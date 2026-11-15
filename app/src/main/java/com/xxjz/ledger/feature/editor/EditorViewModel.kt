@@ -636,6 +636,21 @@ class EditorViewModel
             }
 
         /**
+         * 「⇄」图标的点击入口：基于**最新**状态翻转（v1.9.4 第 3 条）。
+         *
+         * 以前 UI 传的是 `!state.splitMode`——`state` 是那次重组捕获的快照，
+         * 连点两下时第二次仍绑在同一个快照上，算出的值与第一次一样，
+         * 于是 `setSplitMode(true)` 被连调两次，状态看起来「没反应」。
+         *
+         * 这里用 `update` 的 CAS 循环读最新值：无论点多快，两次点击必定一开一关。
+         */
+        fun toggleSplitMode() =
+            _state.update {
+                val next = !it.splitMode
+                it.copy(splitMode = next, splits = if (next) it.splits else emptyMap(), dirty = true)
+            }
+
+        /**
          * 设置某个账户在组合支付里出多少钱。
          *
          * 传空串或 0 视为把这个账户从组合里去掉——用户清空输入框的意图就是「不用它付」。

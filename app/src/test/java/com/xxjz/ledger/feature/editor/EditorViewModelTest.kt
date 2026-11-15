@@ -623,6 +623,58 @@ class EditorViewModelTest {
             assertEquals("acc-2", settings.value.lastPayAccountId)
         }
 
+    // ---------- v1.9.4 第 3 条：组合支付「⇄」连点 ----------
+
+    @Test
+    fun `连点两次组合开关是一开一关`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertFalse(vm.state.value.splitMode)
+
+            vm.toggleSplitMode()
+            assertTrue(vm.state.value.splitMode, "第一次点：开")
+            vm.toggleSplitMode()
+            assertFalse(vm.state.value.splitMode, "第二次点：关。以前这里会两次都读同一个快照，连点无效")
+        }
+
+    @Test
+    fun `连点三次落在开`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            repeat(3) { vm.toggleSplitMode() }
+            assertTrue(vm.state.value.splitMode)
+        }
+
+    @Test
+    fun `连点四次回到单选且分摊为空`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.toggleSplitMode()
+            vm.setSplitAmount("acc-1", "30")
+            assertEquals(3000L, vm.state.value.splitTotal)
+
+            repeat(3) { vm.toggleSplitMode() }
+            assertFalse(vm.state.value.splitMode)
+            assertTrue(vm.state.value.splits.isEmpty(), "关掉组合必须清空分摊，否则金额会在单选模式下悄悄生效")
+        }
+
+    @Test
+    fun `关掉再打开不会带回上一次的分摊`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.toggleSplitMode()
+            vm.setSplitAmount("acc-1", "30")
+            vm.toggleSplitMode()
+            vm.toggleSplitMode()
+
+            assertTrue(vm.state.value.splitMode)
+            assertTrue(vm.state.value.splits.isEmpty(), "重新打开组合应该从空白开始")
+        }
+
     // ---------- v1.9.3 第 6、7 条：状态胶囊、再记、退款、分期 ----------
 
     @Test

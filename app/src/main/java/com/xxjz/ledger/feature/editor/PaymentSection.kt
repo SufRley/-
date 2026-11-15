@@ -108,7 +108,8 @@ internal fun PaymentSection(
                             SplitModeButton(
                                 split = state.splitMode,
                                 count = state.splits.size,
-                                onToggle = { viewModel.setSplitMode(!state.splitMode) },
+                                // 传动作而不是传算好的布尔值：连点时第二个回调也读不到新的 state（v1.9.4 第 3 条）
+                                onToggle = viewModel::toggleSplitMode,
                             )
                         }
                     } else {
