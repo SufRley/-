@@ -24,6 +24,7 @@ fun TxnMenuHost(
     onOpenRecurring: () -> Unit,
     onEditTxn: (String) -> Unit,
     onStartBatch: (TxnRow) -> Unit,
+    onDelete: (TxnRow) -> Unit,
     onDismiss: () -> Unit,
 ) {
     if (target == null) return
@@ -56,6 +57,10 @@ fun TxnMenuHost(
             onDismiss()
         },
         onMore = { showMore = true },
+        onDelete = {
+            onDelete(target)
+            onDismiss()
+        },
     )
 
     if (showMore) {

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.CalendarViewMonth
 import androidx.compose.material.icons.outlined.CallSplit
 import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Receipt
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +67,7 @@ fun TxnActionSheet(
     onSplit: () -> Unit,
     onInstallment: () -> Unit,
     onMore: () -> Unit,
+    onDelete: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, modifier = Modifier.testTag("txn_action_sheet")) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding()) {
@@ -81,6 +84,9 @@ fun TxnActionSheet(
             ActionRow(Icons.Outlined.CalendarViewMonth, "分期", "查看该账户账单与分期计划", "action_installment", onInstallment)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ActionRow(Icons.Outlined.MoreHoriz, "更多操作", null, "action_more", onMore)
+            // v1.9.4 第 4 条：删除收到抽屉里，放最底且用红色，离常用项最远、误触最少。
+            // 不再弹二次确认——与批量删除、原左滑删除口径一致，反悔靠回收站。
+            ActionRow(Icons.Outlined.DeleteOutline, "删除", "移入回收站，可恢复", "action_delete", onDelete, danger = true)
             Spacer(Modifier.height(12.dp))
         }
     }
@@ -209,7 +215,10 @@ private fun ActionRow(
     subtitle: String?,
     tag: String,
     onClick: () -> Unit,
+    danger: Boolean = false,
 ) {
+    val tint = if (danger) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    val titleColor = if (danger) MaterialTheme.colorScheme.error else Color.Unspecified
     Row(
         modifier =
             Modifier
@@ -220,10 +229,10 @@ private fun ActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Start,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = tint)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = titleColor)
             if (subtitle != null) {
                 Text(
                     subtitle,

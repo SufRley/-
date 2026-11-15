@@ -25,7 +25,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
-import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
@@ -37,11 +36,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -194,7 +190,6 @@ fun LedgerScreen(
                                     }
                                 },
                                 onLongClick = { if (!selecting) menuRow = row },
-                                onDelete = { viewModel.delete(row.txn.id) },
                             )
                         }
                     }
@@ -235,6 +230,10 @@ fun LedgerScreen(
             onStartBatch = { row ->
                 selecting = true
                 selectedIds = setOf(row.txn.id)
+            },
+            onDelete = { row ->
+                viewModel.delete(row.txn.id)
+                menuRow = null
             },
             onDismiss = { menuRow = null },
         )
@@ -420,10 +419,11 @@ private fun DayHeader(group: DayGroup) {
 }
 
 /**
- * 一条流水（PRD v1.9.0 第 3 条）。
+ * 一条流水（PRD v1.9.0 第 3 条，v1.9.4 第 4 条移除左滑删除）。
  *
- * 三种交互叠在一起：轻点打开详情、长按弹动作面板、往左滑删除。
- * 批量模式下关掉左滑，否则勾选时手一抖就把账删了。
+ * 两种交互：轻点打开详情、长按弹动作面板。删除统一走长按抽屉最底部的红色项——
+ * 一行上叠四种手势（点击、长按、左滑、批量勾选）误触率太高，且左滑删除没有任何提示，
+ * 与批量删除/抽屉删除的口径也不一致。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -433,117 +433,78 @@ private fun TxnItem(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
-    onDelete: () -> Unit,
 ) {
     val txn = row.txn
-    val dismissState =
-        rememberSwipeToDismissBoxState(
-            confirmValueChange = { value ->
-                if (value == SwipeToDismissBoxValue.EndToStart && !selecting) {
-                    onDelete()
-                    true
-                } else {
-                    false
-                }
-            },
-        )
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        enableDismissFromEndToStart = !selecting,
-        backgroundContent = { DeleteBackground() },
-        modifier = Modifier.testTag("txn_swipe_${txn.id}"),
-    ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    // 必须有背景：否则左滑时内容透明，红底会透上来
-                    .background(MaterialTheme.colorScheme.surface)
-                    .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
-                    .testTag("txn_item_${txn.id}"),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (selecting) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onClick() },
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-            }
-            Box(
-                modifier =
-                    Modifier
-                        .size(38.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = row.categoryName.take(1),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.categoryName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                    if (txn.pendingReimbursement) {
-                        TinyBadge("待报销", "badge_reimburse_${txn.id}")
-                    }
-                    if (txn.excludedFromStats) {
-                        TinyBadge("不计入", "badge_excluded_${txn.id}")
-                    }
-                }
-                val sub =
-                    buildString {
-                        if (txn.note.isNotBlank()) append(txn.note)
-                        if (txn.type == TxnType.TRANSFER) {
-                            if (isNotEmpty()) append(" · ")
-                            append("转账")
-                        }
-                    }
-                if (sub.isNotEmpty()) {
-                    Text(
-                        text = sub,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            AmountText(
-                cents = txn.amount,
-                direction =
-                    when (txn.type) {
-                        TxnType.INCOME -> AmountDirection.INCOME
-                        TxnType.EXPENSE -> AmountDirection.EXPENSE
-                        else -> AmountDirection.NEUTRAL
-                    },
-                signed = txn.type != TxnType.TRANSFER,
-                style = MaterialTheme.typography.bodyLarge,
-            )
-        }
-    }
-}
-
-/** 左滑露出的红底：图标贴右，与「往左滑」的手势方向一致。 */
-@Composable
-private fun DeleteBackground() {
-    Box(
+    Row(
         modifier =
             Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.errorContainer)
-                .padding(horizontal = 24.dp),
-        contentAlignment = Alignment.CenterEnd,
+                .fillMaxWidth()
+                // 必须有背景：列表下面还有预算概览卡，透明会让它透上来
+                .background(MaterialTheme.colorScheme.surface)
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .testTag("txn_item_${txn.id}"),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = Icons.Outlined.DeleteOutline,
-            contentDescription = "删除",
-            tint = MaterialTheme.colorScheme.onErrorContainer,
+        if (selecting) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onClick() },
+                modifier = Modifier.padding(end = 8.dp),
+            )
+        }
+        Box(
+            modifier =
+                Modifier
+                    .size(38.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = row.categoryName.take(1),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(row.categoryName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                if (txn.pendingReimbursement) {
+                    TinyBadge("待报销", "badge_reimburse_${txn.id}")
+                }
+                if (txn.excludedFromStats) {
+                    TinyBadge("不计入", "badge_excluded_${txn.id}")
+                }
+            }
+            val sub =
+                buildString {
+                    if (txn.note.isNotBlank()) append(txn.note)
+                    if (txn.type == TxnType.TRANSFER) {
+                        if (isNotEmpty()) append(" · ")
+                        append("转账")
+                    }
+                }
+            if (sub.isNotEmpty()) {
+                Text(
+                    text = sub,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        AmountText(
+            cents = txn.amount,
+            direction =
+                when (txn.type) {
+                    TxnType.INCOME -> AmountDirection.INCOME
+                    TxnType.EXPENSE -> AmountDirection.EXPENSE
+                    else -> AmountDirection.NEUTRAL
+                },
+            signed = txn.type != TxnType.TRANSFER,
+            style = MaterialTheme.typography.bodyLarge,
         )
     }
 }
