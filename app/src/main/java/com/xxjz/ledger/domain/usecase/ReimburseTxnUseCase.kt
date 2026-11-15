@@ -4,8 +4,10 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import javax.inject.Inject
@@ -34,19 +36,37 @@ class ReimburseTxnUseCase
     constructor(
         private val txnRepository: TxnRepository,
         private val categoryRepository: CategoryRepository,
+        private val accountRepository: AccountRepository,
     ) {
-        /** 确认报销：[actualCents] 为实际到账金额，必须 1..原支出金额。 */
+        /**
+         * 确认报销（v1.9.4 第 2 条扩展）。
+         *
+         * @param actualCents 实际到账金额，必须 1..原支出金额
+         * @param accountId 到账账户；`null` 表示沿用原支出的付款账户（兼容老调用）
+         * @param dateTime 这笔报销收入**发生在哪一天**（用户选的），写进 `dateTime` 与 `dateKey`，
+         *   决定它落到明细的哪个分组、算进哪个月的报表与预算
+         * @param now 这次操作的**系统时刻**，写进 `createdAt` 与原账的 `reimbursedAt`。
+         *
+         * 两个时间必须分开：用户把报销日期改成上月时，若两者混用，
+         * 回收站排序与「最近操作」会一起跟着错乱。
+         *
+         * 原支出账目只由 [TxnRepository.setReimbursed] 写报销金额与时间，金额、日期、账户、分类一个都不动。
+         */
         suspend fun confirm(
             txnId: String,
             actualCents: Long,
+            accountId: String? = null,
+            dateTime: Long = System.currentTimeMillis(),
             now: Long = System.currentTimeMillis(),
         ): AppResult<ReimburseResult> {
             val original = txnRepository.byId(txnId) ?: return AppResult.Failure(AppError.NotFound)
-            if (original.type != TxnType.EXPENSE) return AppResult.Failure(AppError.Custom("只有支出可以报销"))
-            if (original.isDeleted) return AppResult.Failure(AppError.Custom("该账目已删除"))
-            if (!original.pendingReimbursement) return AppResult.Failure(AppError.Custom("该账目不在待报销状态"))
-            if (actualCents <= 0L) return AppResult.Failure(AppError.AmountNotPositive)
-            if (actualCents > original.amount) return AppResult.Failure(AppError.Custom("报销金额不能超过支出金额"))
+            validateOriginal(original, actualCents)?.let { return AppResult.Failure(it) }
+
+            val targetId = accountId ?: original.accountId
+            if (accountId != null) {
+                val target = accountRepository.byId(accountId)
+                validateTarget(target)?.let { return AppResult.Failure(it) }
+            }
 
             val income =
                 Txn(
@@ -54,9 +74,9 @@ class ReimburseTxnUseCase
                     type = TxnType.INCOME,
                     amount = actualCents,
                     categoryId = SeedData.REIMBURSE_CATEGORY_ID,
-                    accountId = original.accountId,
-                    dateTime = now,
-                    dateKey = DateUtils.dateKeyOf(now),
+                    accountId = targetId,
+                    dateTime = dateTime,
+                    dateKey = DateUtils.dateKeyOf(dateTime),
                     note = "报销：${original.note}".take(200),
                     parentTxnId = original.id,
                     createdAt = now,
@@ -85,6 +105,34 @@ class ReimburseTxnUseCase
             txnRepository.setReimbursed(original.id, 0, null, now, pending = true)
             return AppResult.Success(Unit)
         }
+
+        /**
+         * 原账目与金额的前置检查；返回 null 表示通过。
+         *
+         * 抽出来是为了让 [confirm] 的可读性不被一串提前返回切碎，
+         * 也顺带避开 detekt 的 `ReturnCount`（这个函数原本已经 8 条返回，加上账户校验就超了）。
+         */
+        private fun validateOriginal(
+            original: Txn,
+            actualCents: Long,
+        ): AppError? =
+            when {
+                original.type != TxnType.EXPENSE -> AppError.Custom("只有支出可以报销")
+                original.isDeleted -> AppError.Custom("该账目已删除")
+                !original.pendingReimbursement -> AppError.Custom("该账目不在待报销状态")
+                actualCents <= 0L -> AppError.AmountNotPositive
+                actualCents > original.amount -> AppError.Custom("报销金额不能超过支出金额")
+                else -> null
+            }
+
+        /** 到账账户检查：必须是存在、未隐藏的资金账户。 */
+        private fun validateTarget(target: Account?): AppError? =
+            when {
+                target == null -> AppError.Custom("到账账户不存在")
+                target.type !in FundingAccounts.TYPES -> AppError.Custom("报销只能到账到资金账户")
+                target.hidden -> AppError.Custom("到账账户不可用")
+                else -> null
+            }
 
         /** 待报销合计（分），用于首页胶囊。 */
         suspend fun pendingTotal(): Long = txnRepository.pendingReimbursement().sumOf { it.amount }

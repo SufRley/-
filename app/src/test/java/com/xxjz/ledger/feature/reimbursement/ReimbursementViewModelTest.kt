@@ -1,10 +1,13 @@
 package com.xxjz.ledger.feature.reimbursement
 
 import com.xxjz.ledger.core.common.DateUtils
+import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.ReimburseTxnUseCase
+import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -31,11 +34,18 @@ class ReimbursementViewModelTest {
     private val dispatcher = StandardTestDispatcher()
     private val txnRepo = FakeTxnRepository()
     private val categoryRepo = FakeCategoryRepository()
+    private val accountRepo = FakeAccountRepository()
 
     private val today: LocalDate = DateUtils.today()
     private val now: Long = DateUtils.toMillis(today, LocalTime.NOON)
 
-    private fun viewModel() = ReimbursementViewModel(txnRepo, categoryRepo, ReimburseTxnUseCase(txnRepo, categoryRepo))
+    private fun viewModel() =
+        ReimbursementViewModel(
+            txnRepo,
+            categoryRepo,
+            ReimburseTxnUseCase(txnRepo, categoryRepo, accountRepo),
+            accountRepo,
+        )
 
     private fun pending(
         id: String,
@@ -163,5 +173,83 @@ class ReimbursementViewModelTest {
             advanceUntilIdle()
             vm.consumeMessage()
             assertNull(vm.state.value.message)
+        }
+
+    // ---- v1.9.4 第 2 条：到账账户列表 ----
+
+    private fun account(
+        id: String,
+        type: AccountType,
+        hidden: Boolean = false,
+        sortOrder: Int = 0,
+    ): Account {
+        val a = Account(id = id, name = id, type = type, hidden = hidden, sortOrder = sortOrder)
+        accountRepo.items[id] = a
+        return a
+    }
+
+    @Test
+    @DisplayName("到账账户只列现金 / 储蓄卡 / 投资，且不含隐藏账户")
+    fun fundingAccountsFiltered() =
+        runTest(dispatcher.scheduler) {
+            account("cash", AccountType.CASH, sortOrder = 0)
+            account("savings", AccountType.SAVINGS, sortOrder = 1)
+            account("invest", AccountType.INVEST, sortOrder = 2)
+            account("credit", AccountType.CREDIT, sortOrder = 3)
+            account("debt", AccountType.DEBT, sortOrder = 4)
+            account("ghost", AccountType.SAVINGS, hidden = true, sortOrder = 5)
+
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertEquals(listOf("cash", "savings", "invest"), vm.state.value.fundingAccounts.map { it.id })
+        }
+
+    @Test
+    @DisplayName("到账账户按 sortOrder 排，与账户页顺序一致")
+    fun fundingAccountsSorted() =
+        runTest(dispatcher.scheduler) {
+            account("b", AccountType.SAVINGS, sortOrder = 2)
+            account("a", AccountType.CASH, sortOrder = 1)
+            val vm = viewModel()
+            advanceUntilIdle()
+            assertEquals(listOf("a", "b"), vm.state.value.fundingAccounts.map { it.id })
+        }
+
+    @Test
+    @DisplayName("确认报销时把到账账户与时间透传给用例")
+    fun confirmPassesAccountAndTime() =
+        runTest(dispatcher.scheduler) {
+            pending("t1", 12_000, "打车")
+            account("cash", AccountType.CASH)
+            val vm = viewModel()
+            advanceUntilIdle()
+            val chosen = DateUtils.toMillis(today.minusDays(1), LocalTime.of(9, 30))
+
+            vm.confirm("t1", "120", accountId = "cash", dateTime = chosen)
+            advanceUntilIdle()
+
+            val income = txnRepo.items.values.first { it.type == TxnType.INCOME }
+            assertEquals("cash", income.accountId)
+            assertEquals(chosen, income.dateTime)
+            assertEquals(DateUtils.dateKeyOf(today.minusDays(1)), income.dateKey)
+        }
+
+    @Test
+    @DisplayName("撤销仍正常：删掉收入，原账回到待报销")
+    fun undoStillWorks() =
+        runTest(dispatcher.scheduler) {
+            pending("t1", 12_000, "打车")
+            account("cash", AccountType.CASH)
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.confirm("t1", "120", accountId = "cash")
+            advanceUntilIdle()
+
+            vm.undo("t1")
+            advanceUntilIdle()
+
+            assertTrue(txnRepo.items.values.none { it.type == TxnType.INCOME })
+            assertTrue(txnRepo.items.getValue("t1").pendingReimbursement)
         }
 }

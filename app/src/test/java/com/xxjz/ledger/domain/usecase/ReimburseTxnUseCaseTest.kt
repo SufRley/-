@@ -4,8 +4,11 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.test.runTest
@@ -23,7 +26,8 @@ import java.time.LocalTime
 class ReimburseTxnUseCaseTest {
     private val txnRepo = FakeTxnRepository()
     private val categoryRepo = FakeCategoryRepository()
-    private val useCase = ReimburseTxnUseCase(txnRepo, categoryRepo)
+    private val accountRepo = FakeAccountRepository()
+    private val useCase = ReimburseTxnUseCase(txnRepo, categoryRepo, accountRepo)
     private val now = DateUtils.toMillis(LocalDate.of(2026, 11, 13), LocalTime.NOON)
 
     private fun expense(
@@ -58,7 +62,7 @@ class ReimburseTxnUseCaseTest {
     fun fullReimbursement() =
         runTest {
             pendingExpense(12_000)
-            val result = useCase.confirm("t1", 12_000, now)
+            val result = useCase.confirm("t1", 12_000, dateTime = now, now = now)
 
             assertTrue(result is AppResult.Success)
             val data = (result as AppResult.Success).data
@@ -83,7 +87,7 @@ class ReimburseTxnUseCaseTest {
     fun partialReimbursement() =
         runTest {
             pendingExpense(12_000)
-            val result = useCase.confirm("t1", 9_000, now) as AppResult.Success
+            val result = useCase.confirm("t1", 9_000, dateTime = now, now = now) as AppResult.Success
             assertEquals(9_000, result.data.reimbursed)
             assertEquals(3_000, result.data.selfPaid)
 
@@ -98,11 +102,11 @@ class ReimburseTxnUseCaseTest {
     fun rejectsInvalidAmounts() =
         runTest {
             pendingExpense(12_000)
-            assertEquals("报销金额不能超过支出金额", (useCase.confirm("t1", 12_001, now) as AppResult.Failure).error.message)
-            assertEquals(AppError.AmountNotPositive, (useCase.confirm("t1", 0, now) as AppResult.Failure).error)
+            assertEquals("报销金额不能超过支出金额", (useCase.confirm("t1", 12_001, dateTime = now, now = now) as AppResult.Failure).error.message)
+            assertEquals(AppError.AmountNotPositive, (useCase.confirm("t1", 0, dateTime = now, now = now) as AppResult.Failure).error)
 
-            useCase.confirm("t1", 12_000, now)
-            assertEquals("该账目不在待报销状态", (useCase.confirm("t1", 5_000, now) as AppResult.Failure).error.message)
+            useCase.confirm("t1", 12_000, dateTime = now, now = now)
+            assertEquals("该账目不在待报销状态", (useCase.confirm("t1", 5_000, dateTime = now, now = now) as AppResult.Failure).error.message)
         }
 
     @Test
@@ -122,7 +126,7 @@ class ReimburseTxnUseCaseTest {
                     createdAt = now,
                     updatedAt = now,
                 )
-            assertEquals("只有支出可以报销", (useCase.confirm("i1", 500, now) as AppResult.Failure).error.message)
+            assertEquals("只有支出可以报销", (useCase.confirm("i1", 500, dateTime = now, now = now) as AppResult.Failure).error.message)
         }
 
     @Test
@@ -130,7 +134,7 @@ class ReimburseTxnUseCaseTest {
     fun undoRestoresState() =
         runTest {
             pendingExpense(12_000)
-            val data = (useCase.confirm("t1", 7_000, now) as AppResult.Success).data
+            val data = (useCase.confirm("t1", 7_000, dateTime = now, now = now) as AppResult.Success).data
 
             val undo = useCase.undo("t1", now)
             assertTrue(undo is AppResult.Success)
@@ -150,6 +154,151 @@ class ReimburseTxnUseCaseTest {
             val undo = useCase.undo("t1", now)
             assertEquals("该账目未报销", (undo as AppResult.Failure).error.message)
             assertTrue(txnRepo.items["t1"]!!.pendingReimbursement)
+        }
+
+    // ---- v1.9.4 第 2 条：到账账户与报销时间 ----
+
+    private fun account(
+        id: String,
+        type: AccountType,
+        hidden: Boolean = false,
+    ): Account {
+        val a = Account(id = id, name = id, type = type, hidden = hidden)
+        accountRepo.items[id] = a
+        return a
+    }
+
+    @Test
+    @DisplayName("指定到账账户：收入写进该账户，原支出的账户不动")
+    fun incomeGoesToChosenAccount() =
+        runTest {
+            pendingExpense(12_000)
+            account("savings", AccountType.SAVINGS)
+            account("cash", AccountType.CASH)
+
+            val result = useCase.confirm("t1", 12_000, accountId = "cash", dateTime = now, now = now)
+            val data = (result as AppResult.Success).data
+
+            val income = txnRepo.items.getValue(data.incomeTxnId)
+            assertEquals("cash", income.accountId)
+            assertEquals("acc-1", txnRepo.items.getValue("t1").accountId, "原支出的付款账户不能被改")
+        }
+
+    @Test
+    @DisplayName("不传账户时沿用原支出的付款账户")
+    fun defaultKeepsOriginalAccount() =
+        runTest {
+            pendingExpense(12_000)
+            val result = useCase.confirm("t1", 12_000, dateTime = now, now = now)
+            val data = (result as AppResult.Success).data
+            assertEquals("acc-1", txnRepo.items.getValue(data.incomeTxnId).accountId)
+        }
+
+    @Test
+    @DisplayName("报销时间写进 dateTime 与 dateKey，与操作时刻分开")
+    fun incomeUsesChosenDateTime() =
+        runTest {
+            pendingExpense(12_000)
+            account("savings", AccountType.SAVINGS)
+            val chosen = DateUtils.toMillis(LocalDate.of(2026, 10, 1), LocalTime.of(9, 30))
+
+            val data =
+                (useCase.confirm("t1", 12_000, accountId = "savings", dateTime = chosen, now = now) as AppResult.Success).data
+
+            val income = txnRepo.items.getValue(data.incomeTxnId)
+            assertEquals(chosen, income.dateTime)
+            assertEquals(20261001, income.dateKey, "明细分组与报表归属月都看 dateKey")
+            // 操作时刻仍记在 createdAt 与原账的 reimbursedAt 上
+            assertEquals(now, income.createdAt)
+            assertEquals(now, txnRepo.items.getValue("t1").reimbursedAt)
+        }
+
+    @Test
+    @DisplayName("原支出的金额、日期、分类在报销后原样保留")
+    fun originalExpenseStaysUntouched() =
+        runTest {
+            val original = pendingExpense(12_000)
+            account("savings", AccountType.SAVINGS)
+            val chosen = DateUtils.toMillis(LocalDate.of(2026, 10, 1), LocalTime.of(9, 30))
+
+            useCase.confirm("t1", 8_000, accountId = "savings", dateTime = chosen, now = now)
+
+            val after = txnRepo.items.getValue(original.id)
+            assertEquals(original.amount, after.amount)
+            assertEquals(original.dateTime, after.dateTime)
+            assertEquals(original.dateKey, after.dateKey)
+            assertEquals(original.categoryId, after.categoryId)
+            assertEquals(original.accountId, after.accountId)
+            assertEquals(8_000, after.reimbursedAmount)
+            assertFalse(after.pendingReimbursement)
+        }
+
+    @Test
+    @DisplayName("信用账户不能收报销款")
+    fun creditAccountRejected() =
+        runTest {
+            pendingExpense(12_000)
+            account("credit", AccountType.CREDIT)
+            val result = useCase.confirm("t1", 12_000, accountId = "credit", dateTime = now, now = now)
+            assertEquals("报销只能到账到资金账户", (result as AppResult.Failure).error.message)
+            assertEquals(1, txnRepo.items.size, "校验失败不能写库")
+        }
+
+    @Test
+    @DisplayName("借贷账户不能收报销款")
+    fun debtAccountRejected() =
+        runTest {
+            pendingExpense(12_000)
+            account("debt", AccountType.DEBT)
+            val result = useCase.confirm("t1", 12_000, accountId = "debt", dateTime = now, now = now)
+            assertEquals("报销只能到账到资金账户", (result as AppResult.Failure).error.message)
+        }
+
+    @Test
+    @DisplayName("隐藏账户不能收报销款")
+    fun hiddenAccountRejected() =
+        runTest {
+            pendingExpense(12_000)
+            account("ghost", AccountType.SAVINGS, hidden = true)
+            val result = useCase.confirm("t1", 12_000, accountId = "ghost", dateTime = now, now = now)
+            assertEquals("到账账户不可用", (result as AppResult.Failure).error.message)
+        }
+
+    @Test
+    @DisplayName("账户不存在时报错，且不写库")
+    fun unknownAccountRejected() =
+        runTest {
+            pendingExpense(12_000)
+            val result = useCase.confirm("t1", 12_000, accountId = "nope", dateTime = now, now = now)
+            assertEquals("到账账户不存在", (result as AppResult.Failure).error.message)
+            assertEquals(1, txnRepo.items.size)
+        }
+
+    @Test
+    @DisplayName("投资账户是资金账户，可以收报销款")
+    fun investAccountAccepted() =
+        runTest {
+            pendingExpense(12_000)
+            account("invest", AccountType.INVEST)
+            val data = (useCase.confirm("t1", 12_000, accountId = "invest", dateTime = now, now = now) as AppResult.Success).data
+            assertEquals("invest", txnRepo.items.getValue(data.incomeTxnId).accountId)
+        }
+
+    @Test
+    @DisplayName("指定账户后撤销仍能删掉那笔收入，原账回到待报销")
+    fun undoStillWorksWithCustomAccount() =
+        runTest {
+            pendingExpense(12_000)
+            account("savings", AccountType.SAVINGS)
+            val data = (useCase.confirm("t1", 12_000, accountId = "savings", dateTime = now, now = now) as AppResult.Success).data
+
+            val undo = useCase.undo("t1", now)
+
+            assertTrue(undo is AppResult.Success)
+            assertNull(txnRepo.items[data.incomeTxnId])
+            val original = txnRepo.items.getValue("t1")
+            assertTrue(original.pendingReimbursement)
+            assertEquals(0, original.reimbursedAmount)
         }
 
     @Test
