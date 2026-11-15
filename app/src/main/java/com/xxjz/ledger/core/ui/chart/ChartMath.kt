@@ -70,6 +70,83 @@ object PieGeometry {
         arcs.maxByOrNull { it.sweepAngle }?.let { "${(it.sweepAngle / 360f * 100).toInt()}%" } ?: "—"
 }
 
+/** 一段中角方向上的极坐标点（[cos]/[sin] 由扇区中角算好，多次复用）。 */
+data class PolarPoint(
+    val x: Float,
+    val y: Float,
+)
+
+/**
+ * 引线几何（v1.9.4 第 1 条）。
+ *
+ * 拆出来是为了能脱离 Canvas 单测：这条线涉及的半径、偏移全是纯算术，
+ * 一旦算错在真机上只表现为「线头戳出色块 2dp」，肉眼很难判断对不对。
+ *
+ * 画法：环中线 → 沿扇区方向直出 [LEAD] → 折向水平 → 贴到文字边缘。
+ */
+object CalloutGeometry {
+    /**
+     * 环中线半径。
+     *
+     * 描边是**居中**画的（`drawArc` 的 `Stroke` 默认），所以外半径减去半个线宽，
+     * 落点正好在环带正中间；再往外 [LEAD] 也还在环带里（环带半宽 = 线宽/2 = 12dp）。
+     */
+    fun ringMidRadius(
+        outerRadius: Float,
+        thickness: Float,
+    ): Float = (outerRadius - thickness / 2f).coerceAtLeast(0f)
+
+    /**
+     * 引线起点：环中线。
+     *
+     * 故意**不跟随选中态**——选中段的描边是 1.25 倍宽，中线会再往里 1.5dp，
+     * 但让起点跟着点击一起微跳反而更显眼（PRD 2.3）。
+     */
+    fun startPoint(
+        centerX: Float,
+        centerY: Float,
+        cos: Float,
+        sin: Float,
+        outerRadius: Float,
+        thickness: Float,
+    ): PolarPoint = pointAt(centerX, centerY, cos, sin, ringMidRadius(outerRadius, thickness))
+
+    /** 直出段的终点：环中线再沿同一方向推 [lead]。 */
+    fun leadPoint(
+        centerX: Float,
+        centerY: Float,
+        cos: Float,
+        sin: Float,
+        outerRadius: Float,
+        thickness: Float,
+        lead: Float,
+    ): PolarPoint = pointAt(centerX, centerY, cos, sin, ringMidRadius(outerRadius, thickness) + lead)
+
+    /**
+     * 肘部的横坐标：饼图外侧 [gap] 处。
+     *
+     * 用**方向符号**（±1）而不是 cos 本身：贴着 12 点 / 6 点方向的扇区 cos ≈ 0，
+     * 乘出来肘部会贴在圆心正上方，引线直接从饼图里穿过去。
+     */
+    fun elbowX(
+        centerX: Float,
+        direction: Int,
+        outerRadius: Float,
+        gap: Float,
+    ): Float = centerX + direction.sign() * (outerRadius + gap)
+
+    /** 同 [elbowX] 的纵坐标基准：肘部高度就是标签基线高度。 */
+    private fun Int.sign(): Int = if (this < 0) -1 else 1
+
+    private fun pointAt(
+        centerX: Float,
+        centerY: Float,
+        cos: Float,
+        sin: Float,
+        radius: Float,
+    ): PolarPoint = PolarPoint(x = centerX + cos * radius, y = centerY + sin * radius)
+}
+
 /** 柱状图/折线图的一个点（已算好比例，Canvas 直接用）。 */
 data class ChartPoint(
     val label: String,

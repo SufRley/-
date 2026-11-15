@@ -33,6 +33,12 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
+/** 环中线沿扇区方向的直出长度（v1.9.4 第 1 条）。 */
+private val LEAD_LENGTH = 4.dp
+
+/** 肘部相对饼图外缘的外扩距离（v1.9.4 第 1 条，原 12dp）。 */
+private val ELBOW_GAP = 4.dp
+
 /**
  * 饼图外侧的引导标签：账户名 + 数值（v1.9.3 第 5 条）。
  *
@@ -99,8 +105,8 @@ fun LabeledPieChart(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         // 高度定死，标签的纵向排布才有稳定基准
         val chartHeight = 300.dp
-        // 标签列宽：截图里标签约占卡片的四分之一强，88dp 能放下「投资账户 2,000.00」
-        val calloutSpace = 88.dp
+        // 标签列宽（v1.9.4 第 1 条）：88 → 96dp，账户名可用宽度从约 70dp 增到约 86dp
+        val calloutSpace = 96.dp
         val gap = 6.dp
         val outerRadius =
             with(density) {
@@ -110,6 +116,8 @@ fun LabeledPieChart(
                 )
             }.coerceAtLeast(40f)
         val thicknessPx = with(density) { thickness.toPx() }
+        // 环中线沿扇区方向直出的一小段（v1.9.4 第 1 条）：先把「这块属于这个角度」说清楚，再折向水平
+        val leadPx = with(density) { LEAD_LENGTH.toPx() }
         val innerRadius = (outerRadius - thicknessPx).coerceAtLeast(1f)
         val textGapPx = with(density) { gap.toPx() }
 
@@ -154,7 +162,7 @@ fun LabeledPieChart(
                         valuePaint = valuePaint,
                         textSize = textSize,
                     )
-                drawCalloutLines(items, selected, center, outerRadius, textGapPx)
+                drawCalloutLines(items, selected, center, outerRadius, thicknessPx, textGapPx, leadPx)
                 drawCalloutText(items, titlePaint, valuePaint, titleColor, valueColor, textSize, size.width)
             }
             // 圆心内容：宽高按内圈直径给，避免文字压到环上
@@ -210,7 +218,6 @@ private fun DrawScope.layoutCallouts(
     valuePaint: Paint,
     textSize: Float,
 ): List<CalloutItem> {
-    val lineGap = 12.dp.toPx()
     val lineGapV = 6.dp.toPx()
     val items =
         arcs.map { arc ->
@@ -287,9 +294,17 @@ private fun placeSide(
 }
 
 /**
- * 画折线：从环外缘出发 → 肘部 → 水平到文字边缘。
+ * 画折线（v1.9.4 第 1 条重做）。
  *
- * 水平段的终点由**文字实际宽度**决定，不能用列宽：左对齐之后短标签右侧会留白，
+ * 三段：**环中线 → 沿扇区方向直出 [lead] → 肘部 → 水平到文字边缘**。
+ *
+ * 与 v1.9.3 的三处差别：
+ * - 起点从「环外缘」挪到「环中线」，线头埋在色块里，看起来是从色块中间长出来的；
+ * - 先沿扇区中角直出一小段再折，折线的前半段与扇区方向一致，指代关系更明确；
+ * - 肘部外扩 12dp → 4dp，折线贴着饼边走，不再在外侧兜一个大弯；
+ * - 去掉起点小圆点：起点既然在色块内部，圆点只会变成色块上的一个斑点。
+ *
+ * 水平段的终点仍由**文字实际宽度**决定，不能用列宽：左对齐之后短标签右侧会留白，
  * 从列边缘起画会让引线凭空漂在空白里。
  */
 private fun DrawScope.drawCalloutLines(
@@ -297,13 +312,18 @@ private fun DrawScope.drawCalloutLines(
     selected: Int,
     center: Offset,
     outerRadius: Float,
+    thicknessPx: Float,
     textGapPx: Float,
+    leadPx: Float,
 ) {
-    val lineGap = 12.dp.toPx()
+    val elbowGap = ELBOW_GAP.toPx()
     items.forEach { item ->
         val alpha = if (selected < 0 || selected == item.index) 1f else 0.35f
-        val start = Offset(center.x + item.cos * outerRadius, center.y + item.sin * outerRadius)
-        val elbowX = center.x + item.direction * (outerRadius + lineGap)
+        val start =
+            CalloutGeometry.startPoint(center.x, center.y, item.cos, item.sin, outerRadius, thicknessPx)
+        val leadPoint =
+            CalloutGeometry.leadPoint(center.x, center.y, item.cos, item.sin, outerRadius, thicknessPx, leadPx)
+        val elbowX = CalloutGeometry.elbowX(center.x, item.direction, outerRadius, elbowGap)
         // 引线在文字那一侧收住：右列从文字左边缘往左、左列从文字右边缘往右
         val textEdge =
             if (item.direction > 0) {
@@ -314,12 +334,11 @@ private fun DrawScope.drawCalloutLines(
         val path =
             Path().apply {
                 moveTo(start.x, start.y)
+                lineTo(leadPoint.x, leadPoint.y)
                 lineTo(elbowX, item.labelY)
                 lineTo(textEdge, item.labelY)
             }
         drawPath(path, color = item.color.copy(alpha = 0.8f * alpha), style = Stroke(1.2.dp.toPx()))
-        // 起点小圆点，让线看起来是从色块里长出来的
-        drawCircle(color = item.color.copy(alpha = alpha), radius = 2.dp.toPx(), center = start)
         item.alpha = alpha
     }
 }
