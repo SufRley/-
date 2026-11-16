@@ -23,6 +23,7 @@ import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
 import com.xxjz.ledger.testutil.FakeInstallmentRepository
+import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +61,7 @@ class LedgerListLayoutTest {
     private val txnRepo = FakeTxnRepository()
     private val categoryRepo = FakeCategoryRepository()
     private val accountRepo = FakeAccountRepository()
+    private val settings = FakeSettingsDataStore()
 
     private val today: LocalDate = LocalDate.of(2026, 11, 16)
 
@@ -109,6 +111,7 @@ class LedgerListLayoutTest {
             accountRepository = accountRepo,
             installmentRepository = FakeInstallmentRepository(),
             startInstallmentUseCase = StartInstallmentUseCase(txnRepo, accountRepo, FakeInstallmentRepository()),
+            settingsRepository = settings,
         )
 
     @Test
@@ -216,7 +219,7 @@ class LedgerListLayoutTest {
     }
 
     @Test
-    fun `首页不再出现备份提示`() {
+    fun `从没备份过时首页提示去导出`() {
         seed(2)
         val vm = viewModel()
         compose.setContent {
@@ -225,7 +228,31 @@ class LedgerListLayoutTest {
         dispatcher.scheduler.advanceUntilIdle()
         compose.waitForIdle()
 
-        // 备份入口只在抽屉里（v1.9.5 第 7 条），首页顶部不该再占一行
+        // v1.9.6 第 1 条：提示条回来了，但带 × 可关；从没备份过时措辞是「去导出」
+        compose.onNodeWithTag("home_backup_hint").assertExists()
+        compose.onNodeWithText("还没有备份过，建议导出一份").assertExists()
+    }
+
+    @Test
+    fun `超过七天没备份时首页出现可关闭的提示条`() {
+        seed(3)
+        settings.replaceAll(
+            com.xxjz.ledger.data.datastore.AppSettings(
+                lastBackupAt = System.currentTimeMillis() - 12L * 24 * 60 * 60 * 1000,
+            ),
+        )
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("home_backup_hint").assertExists()
+        compose.onNodeWithText("距上次备份已超过 7 天").assertExists()
+
+        compose.onNodeWithTag("home_backup_close").performClick()
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
         compose.onAllNodesWithTag("home_backup_hint").assertCountEquals(0)
     }
 }

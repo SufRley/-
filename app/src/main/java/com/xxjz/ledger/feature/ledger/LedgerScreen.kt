@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.ChevronLeft
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
@@ -39,6 +41,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,6 +86,8 @@ data class LedgerNav(
     val onOpenReimbursement: () -> Unit = {},
     /** 拆分进独立页面（v1.9.5 第 8 条）。 */
     val onOpenSplit: (String) -> Unit = {},
+    /** 备份提示条上的「去备份」（v1.9.6 第 1 条）。 */
+    val onOpenBackup: () -> Unit = {},
 )
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
@@ -101,6 +106,7 @@ fun LedgerScreen(
     val onOpenCalendar = nav.onOpenCalendar
     val onOpenReimbursement = nav.onOpenReimbursement
     val onOpenSplit = nav.onOpenSplit
+    val onOpenBackup = nav.onOpenBackup
     val onOpenBudget = nav.onOpenBudget
     val onMenu = nav.onMenu
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -140,6 +146,14 @@ fun LedgerScreen(
                 onCalendar = onOpenCalendar,
                 onMenu = onMenu,
             )
+            // 提示条在汇总卡上方（v1.9.6 第 1 条）：先看「该备份了」，再看这个月过得怎么样
+            state.backupHint?.let { hint ->
+                BackupHintBar(
+                    hint = hint,
+                    onOpenBackup = onOpenBackup,
+                    onDismiss = viewModel::dismissBackupHint,
+                )
+            }
             SummaryCard(
                 income = state.income,
                 expense = state.expense,
@@ -304,6 +318,61 @@ private fun MonthHeader(
         }
         IconButton(onClick = onSearch, modifier = Modifier.testTag("search_entry")) {
             Icon(Icons.Outlined.Search, contentDescription = "搜索")
+        }
+    }
+}
+
+/**
+ * 首页备份提示条（v1.9.6 第 1 条）。
+ *
+ * v1.9.5 我按「去掉」实现，把整条删了——用户要的是「别再挡我」，不是「别告诉我」。
+ * 现在行尾给两个出口：去备份（真要做）、×（这一轮先不烦我）。
+ * 「去备份」用文字按钮而不是图标：备份不是高频操作，图标认不出来。
+ */
+@Composable
+private fun BackupHintBar(
+    hint: String,
+    onOpenBackup: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+                .padding(start = 12.dp, end = 4.dp)
+                .heightIn(min = 40.dp)
+                .testTag("home_backup_hint"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = hint,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = onOpenBackup, modifier = Modifier.testTag("home_backup_action")) {
+            Text("去备份", style = MaterialTheme.typography.labelMedium)
+        }
+        // × 用 Box 而不是 IconButton：IconButton 会被 Material 强制撑到 48dp，
+        // 把 40dp 的提示条顶高，一行白白多出十几个 dp。
+        Box(
+            modifier =
+                Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onDismiss)
+                    .testTag("home_backup_close"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "关闭提示",
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(16.dp),
+            )
         }
     }
 }

@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
+import com.xxjz.ledger.data.datastore.AppSettings
+import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.data.datastore.shouldShowBackupHint
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Installment
@@ -45,6 +48,8 @@ data class LedgerUiState(
     val pendingCount: Int = 0,
     val templates: List<Template> = emptyList(),
     val loading: Boolean = true,
+    /** 距上次备份超过 7 天且没被关掉时的提示文案（v1.9.6 第 1 条）。 */
+    val backupHint: String? = null,
     /** 底部预算概览卡（v1.8.0 / PRD F4）。 */
     val budget: BudgetCardState = BudgetCardState(),
 ) {
@@ -68,6 +73,7 @@ class LedgerViewModel
         private val accountRepository: AccountRepository,
         private val installmentRepository: InstallmentRepository,
         private val startInstallmentUseCase: StartInstallmentUseCase,
+        private val settingsRepository: SettingsRepository,
     ) : ViewModel() {
         private val month = MutableStateFlow(YearMonth.now())
 
@@ -87,12 +93,13 @@ class LedgerViewModel
                             categoryRepository.observeAll(),
                             accountRepository.observeWithBalances(),
                         ) { txns, categories, accounts -> Triple(txns, categories, accounts) }
-                    // 备份提示已从首页撤掉（v1.9.5 第 7 条），settings 流不再参与组装
+                    // 备份提示要在首页显示，settings 流一并参与组装（v1.9.6 第 1 条）
                     combine(
                         core,
+                        settingsRepository.settings,
                         templateRepository.observeAll(),
                         budgetForMonth.observe(DateUtils.monthKeyOf(ym.atDay(1))),
-                    ) { (txns, categories, accounts), templates, budgets ->
+                    ) { (txns, categories, accounts), pref, templates, budgets ->
                         val map = categories.associateBy { it.id }
                         val groups = LedgerGrouper.group(txns, map, accounts = accounts.associateBy { it.id })
                         val counted = txns.filter { !it.excludedFromStats }
@@ -112,6 +119,7 @@ class LedgerViewModel
                             pendingTotal = pending.sumOf { it.amount },
                             pendingCount = pending.size,
                             templates = templates,
+                            backupHint = backupHintOf(pref),
                             budget =
                                 BudgetCardState.from(
                                     budgets,
@@ -135,6 +143,29 @@ class LedgerViewModel
             monthValue: Int,
         ) {
             month.value = YearMonth.of(year, monthValue)
+        }
+
+        /**
+         * 首页备份提示文案（v1.9.6 第 1 条）。
+         *
+         * 两句文案语气不同：从没备份过要告诉用户去哪，「隔太久」只是提醒该做了。
+         * 什么时候不显示由 [shouldShowBackupHint] 统一判定，这里只管措辞。
+         */
+        private fun backupHintOf(pref: AppSettings): String? {
+            val show =
+                shouldShowBackupHint(
+                    reminderEnabled = pref.backupReminderEnabled,
+                    lastBackupAt = pref.lastBackupAt,
+                    dismissedAt = pref.backupHintDismissedAt,
+                    now = System.currentTimeMillis(),
+                )
+            if (!show) return null
+            return if (pref.lastBackupAt <= 0) "还没有备份过，建议导出一份" else "距上次备份已超过 7 天"
+        }
+
+        /** 点掉首页的备份提示：只静默 7 天，不碰设置页的「备份提醒」总开关。 */
+        fun dismissBackupHint() {
+            viewModelScope.launch { settingsRepository.dismissBackupHint() }
         }
 
         fun previousMonth() {

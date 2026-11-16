@@ -170,4 +170,5 @@ private fun ledgerNav(
         onOpenBudget = { navController.navigate(Routes.BUDGET) },
         onMenu = onMenuClick,
         onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
+        onOpenBackup = { navController.navigate(Routes.BACKUP) },
     )

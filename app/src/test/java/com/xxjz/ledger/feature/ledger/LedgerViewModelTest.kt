@@ -1,6 +1,7 @@
 package com.xxjz.ledger.feature.ledger
 
 import com.xxjz.ledger.core.common.DateUtils
+import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase
@@ -9,6 +10,7 @@ import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
 import com.xxjz.ledger.testutil.FakeInstallmentRepository
+import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +25,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -42,6 +45,7 @@ class LedgerViewModelTest {
     private val txnRepo = FakeTxnRepository()
     private val categoryRepo = FakeCategoryRepository()
     private val templateRepo = FakeTemplateRepository()
+    private val settings = FakeSettingsDataStore()
 
     private val today: LocalDate = DateUtils.today()
     private val now: Long = DateUtils.toMillis(today, LocalTime.NOON)
@@ -56,6 +60,7 @@ class LedgerViewModelTest {
             installmentRepository = FakeInstallmentRepository(),
             startInstallmentUseCase =
                 StartInstallmentUseCase(txnRepo, FakeAccountRepository(), FakeInstallmentRepository()),
+            settingsRepository = settings,
         )
 
     private fun txn(id: String) =
@@ -180,4 +185,61 @@ class LedgerViewModelTest {
             assertEquals(0L, vm.state.value.pendingTotal)
             assertEquals(0, vm.state.value.pendingCount)
         }
+
+    @Test
+    fun `从没备份过时提示去导出`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastBackupAt = 0))
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertEquals("还没有备份过，建议导出一份", vm.state.value.backupHint)
+        }
+
+    @Test
+    fun `超过七天没备份时提示该备份了`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastBackupAt = System.currentTimeMillis() - 12L * DAY))
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertEquals("距上次备份已超过 7 天", vm.state.value.backupHint)
+        }
+
+    @Test
+    fun `刚备份过就不提示`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastBackupAt = System.currentTimeMillis() - 2L * DAY))
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.backupHint)
+        }
+
+    @Test
+    fun `关掉提示后立刻消失且记下时间`() =
+        runTest(dispatcher.scheduler) {
+            settings.replaceAll(AppSettings(lastBackupAt = 0))
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+            assertNotNull(vm.state.value.backupHint, "一开始应该是显示的")
+
+            vm.dismissBackupHint()
+            advanceUntilIdle()
+
+            assertNull(vm.state.value.backupHint, "点 × 之后要立即消失")
+            assertTrue(settings.value.backupHintDismissedAt > 0, "关闭时间要落盘，杀进程重进也不该再弹")
+        }
+
+    private companion object {
+        /** 一天的毫秒数，测试里算「几天前」用。 */
+        const val DAY = 24 * 60 * 60 * 1000L
+    }
 }

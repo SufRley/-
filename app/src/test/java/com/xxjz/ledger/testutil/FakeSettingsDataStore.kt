@@ -83,6 +83,8 @@ class FakeSettingsDataStore(
 
     override suspend fun markBackedUp(at: Long) = edit { it.copy(lastBackupAt = at) }
 
+    override suspend fun dismissBackupHint(at: Long) = edit { it.copy(backupHintDismissedAt = at) }
+
     override suspend fun setDailyReminder(enabled: Boolean) = edit { it.copy(dailyReminderEnabled = enabled) }
 
     override suspend fun setDailyReminderMinute(minuteOfDay: Int) = edit { it.copy(dailyReminderMinute = minuteOfDay.coerceIn(0, 1439)) }

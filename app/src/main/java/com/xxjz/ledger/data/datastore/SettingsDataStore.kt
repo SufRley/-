@@ -78,6 +78,14 @@ interface SettingsRepository {
 
     suspend fun markBackedUp(at: Long)
 
+    /**
+     * 记下「本轮备份提示被用户关掉」的时刻（v1.9.6 第 1 条）。
+     *
+     * 只影响首页提示条，不动设置页的「备份提醒」总开关——关掉一条打扰，
+     * 不等于把提醒功能整个关掉。
+     */
+    suspend fun dismissBackupHint(at: Long = System.currentTimeMillis())
+
     suspend fun setSavingGoal(cents: Long)
 
     suspend fun setDailyReminder(enabled: Boolean)
@@ -147,6 +155,7 @@ class SettingsDataStore
                     lastPayAccountId = p[KEY_LAST_PAY_ACCOUNT],
                     savingGoalCents = p[KEY_SAVING_GOAL] ?: 0L,
                     lastBackupAt = p[KEY_LAST_BACKUP] ?: 0L,
+                    backupHintDismissedAt = p[KEY_BACKUP_HINT_DISMISSED] ?: 0L,
                     dailyReminderEnabled = p[KEY_DAILY_REMINDER] ?: false,
                     dailyReminderMinute = p[KEY_DAILY_REMINDER_MINUTE] ?: 21 * 60,
                     onboardingDone = p[KEY_ONBOARDING_DONE] ?: false,
@@ -234,6 +243,10 @@ class SettingsDataStore
         /** 记录最近一次成功导出的时间，用于首页提醒。 */
         override suspend fun markBackedUp(at: Long) {
             store.edit { it[KEY_LAST_BACKUP] = at }
+        }
+
+        override suspend fun dismissBackupHint(at: Long) {
+            store.edit { it[KEY_BACKUP_HINT_DISMISSED] = at }
         }
 
         /**
@@ -348,6 +361,7 @@ class SettingsDataStore
             val KEY_SEARCH_HISTORY = stringPreferencesKey("search_history")
             val KEY_SAVING_GOAL = longPreferencesKey("saving_goal_cents")
             val KEY_LAST_BACKUP = longPreferencesKey("last_backup_at")
+            val KEY_BACKUP_HINT_DISMISSED = longPreferencesKey("backup_hint_dismissed_at")
             val KEY_DAILY_REMINDER = booleanPreferencesKey("daily_reminder")
             val KEY_DAILY_REMINDER_MINUTE = intPreferencesKey("daily_reminder_minute")
 
@@ -385,6 +399,8 @@ data class AppSettings(
     val savingGoalCents: Long = 0,
     /** 最近一次导出备份的时间，0 表示从没备份过。 */
     val lastBackupAt: Long = 0,
+    /** 首页备份提示被关掉的时刻（v1.9.6 第 1 条），0 表示没关过。 */
+    val backupHintDismissedAt: Long = 0,
     /** 每日记账提醒开关（AC-85）。 */
     val dailyReminderEnabled: Boolean = false,
     /** 每日提醒时间（当天第几分钟，默认 21:00）。 */
@@ -413,7 +429,32 @@ fun needsBackupReminder(
 ): Boolean {
     if (!enabled) return false
     if (lastBackupAt <= 0) return true
-    return now - lastBackupAt >= days.toLong() * 24 * 60 * 60 * 1000
+    return now - lastBackupAt >= days.toLong() * DAY_MILLIS
 }
+
+/**
+ * 首页要不要显示备份提示条（v1.9.6 第 1 条）。
+ *
+ * 与 [needsBackupReminder] 的区别只有一条：点过 × 之后进静默期。
+ * 静默期与提醒周期同为 7 天，语义统一——**备份一次或关一次，都能安生一周**。
+ *
+ * 静默期的判定写在提醒判定之后，所以「关掉总开关」永远压过一切，
+ * 而「刚备份过」也不会因为没关过 × 就再弹一次。
+ */
+fun shouldShowBackupHint(
+    reminderEnabled: Boolean,
+    lastBackupAt: Long,
+    dismissedAt: Long,
+    now: Long,
+    days: Int = 7,
+    cooldownDays: Int = 7,
+): Boolean {
+    if (!needsBackupReminder(reminderEnabled, lastBackupAt, now, days)) return false
+    if (dismissedAt <= 0L) return true
+    // 时钟被回拨时 now - dismissedAt 可能为负，按「还在静默期」处理，不要立刻再弹。
+    return now - dismissedAt >= cooldownDays.toLong() * DAY_MILLIS
+}
+
+private const val DAY_MILLIS = 24 * 60 * 60 * 1000L
 
 private val Context.appPreferences: DataStore<Preferences> by preferencesDataStore(name = "xxjz_settings")
