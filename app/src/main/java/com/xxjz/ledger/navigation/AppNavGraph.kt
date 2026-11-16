@@ -96,6 +96,7 @@ internal fun NavGraphBuilder.appNavGraph(
                     onOpenBackup = { navController.navigate(Routes.BACKUP) },
                     onOpenBudget = { navController.navigate(Routes.BUDGET) },
                     onMenu = onMenuClick,
+                    onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
                 ),
         )
     }

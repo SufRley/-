@@ -8,6 +8,7 @@ import com.xxjz.ledger.data.datastore.needsBackupReminder
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
+import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
@@ -34,6 +35,10 @@ data class LedgerUiState(
     val income: Long = 0,
     val expense: Long = 0,
     val groups: List<DayGroup> = emptyList(),
+    /** 本月待报销金额合计（分），只算未删除的支出（v1.9.5 第 5 条）。 */
+    val pendingTotal: Long = 0,
+    /** 本月待报销笔数。 */
+    val pendingCount: Int = 0,
     val templates: List<Template> = emptyList(),
     val loading: Boolean = true,
     /** 超过 7 天没备份时在首页顶部提示（M8-T8）。 */
@@ -88,6 +93,12 @@ class LedgerViewModel
                         val map = categories.associateBy { it.id }
                         val groups = LedgerGrouper.group(txns, map, accounts = accounts.associateBy { it.id })
                         val counted = txns.filter { !it.excludedFromStats }
+                        // 待报销与「是否计入收支」无关：被排除统计的那笔照样能报销。
+                        // 但转账与借贷不是「花出去的钱」，没有报销这回事。
+                        val pending =
+                            txns.filter {
+                                it.pendingReimbursement && !it.isDeleted && it.type == TxnType.EXPENSE
+                            }
                         val expenseSum = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.EXPENSE }.sumOf { it.amount }
                         LedgerUiState(
                             monthKey = DateUtils.monthKeyOf(ym.atDay(1)),
@@ -95,6 +106,8 @@ class LedgerViewModel
                             income = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.INCOME }.sumOf { it.amount },
                             expense = expenseSum,
                             groups = groups,
+                            pendingTotal = pending.sumOf { it.amount },
+                            pendingCount = pending.size,
                             templates = templates,
                             budget =
                                 BudgetCardState.from(

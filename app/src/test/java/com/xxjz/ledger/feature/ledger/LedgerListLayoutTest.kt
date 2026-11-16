@@ -7,6 +7,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -156,5 +157,57 @@ class LedgerListLayoutTest {
 
         compose.onNodeWithText("12:00", substring = true).assertExists()
         compose.onNodeWithText("招行储蓄卡", substring = true).assertExists()
+    }
+
+    // ---------- 四格汇总（v1.9.5 第 5 条） ----------
+
+    @Test
+    fun `汇总卡四格齐全`() {
+        seed(2)
+        val vm = viewModel()
+        compose.setContent {
+            XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) }
+        }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("summary_income").assertExists()
+        compose.onNodeWithTag("summary_expense").assertExists()
+        compose.onNodeWithTag("summary_balance").assertExists()
+        compose.onNodeWithTag("summary_pending").assertExists()
+    }
+
+    @Test
+    fun `待报销格显示笔数，点击进待报销页`() {
+        seed(1)
+        txnRepo.items.getValue("t0").let { t ->
+            txnRepo.items["t0"] = t.copy(pendingReimbursement = true)
+        }
+        var opened = false
+        val vm = viewModel()
+        compose.setContent {
+            XxjzTheme { LedgerScreen(nav = LedgerNav(onOpenReimbursement = { opened = true }), viewModel = vm) }
+        }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        // clickable 会合并子节点语义，笔数那个小字得去未合并树里找
+        compose.onNodeWithTag("summary_pending_count", useUnmergedTree = true).assertExists()
+        compose.onNodeWithTag("summary_pending").performClick()
+
+        assertTrue("点击待报销格要能进待报销页", opened)
+    }
+
+    @Test
+    fun `没有待报销时显示暂无`() {
+        seed(1)
+        val vm = viewModel()
+        compose.setContent {
+            XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) }
+        }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onNodeWithText("暂无", substring = true).assertExists()
     }
 }

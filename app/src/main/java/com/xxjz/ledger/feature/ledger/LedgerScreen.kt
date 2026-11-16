@@ -82,6 +82,7 @@ data class LedgerNav(
     val onOpenBackup: () -> Unit = {},
     val onOpenBudget: () -> Unit = {},
     val onMenu: () -> Unit = {},
+    val onOpenReimbursement: () -> Unit = {},
 )
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
@@ -99,6 +100,7 @@ fun LedgerScreen(
     val onOpenSearch = nav.onOpenSearch
     val onOpenCalendar = nav.onOpenCalendar
     val onOpenBackup = nav.onOpenBackup
+    val onOpenReimbursement = nav.onOpenReimbursement
     val onOpenBudget = nav.onOpenBudget
     val onMenu = nav.onMenu
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -161,7 +163,13 @@ fun LedgerScreen(
                     }
                 }
             }
-            SummaryCard(income = state.income, expense = state.expense)
+            SummaryCard(
+                income = state.income,
+                expense = state.expense,
+                pendingTotal = state.pendingTotal,
+                pendingCount = state.pendingCount,
+                onOpenReimbursement = onOpenReimbursement,
+            )
             if (state.expense > 0) {
                 SummaryHint(elapsedDays = state.elapsedDays, dailyAverage = state.dailyAverage)
             }
@@ -375,30 +383,78 @@ private fun TemplateBar(
 private fun SummaryCard(
     income: Long,
     expense: Long,
+    pendingTotal: Long,
+    pendingCount: Int,
+    onOpenReimbursement: () -> Unit,
 ) {
+    // 四格两行（v1.9.5 第 5 条）：收入、支出、结余、待报销。
+    // 以前只有收入与支出两格，用户要自己心算结余，也完全看不出这个月还有多少钱没报销回来。
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(
-                "本月支出",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "¥${MoneyFormatter.centsToYuan(expense)}",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.testTag("month_expense"),
-            )
-            Spacer(Modifier.height(12.dp))
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row {
-                SummaryCell("收入", income, AmountDirection.INCOME, Modifier.weight(1f))
-                SummaryCell("结余", income - expense, AmountDirection.NEUTRAL, Modifier.weight(1f))
+                SummaryCell("收入", income, AmountDirection.INCOME, "summary_income", Modifier.weight(1f))
+                SummaryCell("支出", expense, AmountDirection.EXPENSE, "summary_expense", Modifier.weight(1f))
             }
+            Spacer(Modifier.height(10.dp))
+            Row {
+                SummaryCell(
+                    title = "结余",
+                    amount = income - expense,
+                    // 结余为负说明这个月透支了，用支出色提醒；为正用中性色，免得满屏红绿
+                    direction = if (income - expense < 0) AmountDirection.EXPENSE else AmountDirection.NEUTRAL,
+                    tag = "summary_balance",
+                    modifier = Modifier.weight(1f),
+                )
+                PendingCell(
+                    total = pendingTotal,
+                    count = pendingCount,
+                    onClick = onOpenReimbursement,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/** 待报销格：金额 + 笔数，整格可点（v1.9.5 第 5 条）。 */
+@Composable
+private fun PendingCell(
+    total: Long,
+    count: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp)
+                .testTag("summary_pending"),
+    ) {
+        Text("待报销", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+        if (count == 0) {
+            Text(
+                text = "暂无",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        } else {
+            AmountText(
+                cents = total,
+                direction = AmountDirection.NEUTRAL,
+                signed = false,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = "$count 笔",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.testTag("summary_pending_count"),
+            )
         }
     }
 }
@@ -408,9 +464,10 @@ private fun SummaryCell(
     title: String,
     amount: Long,
     direction: AmountDirection,
+    tag: String,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier) {
+    Column(modifier.testTag(tag)) {
         Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
         AmountText(
             cents = amount,

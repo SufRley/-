@@ -132,4 +132,50 @@ class LedgerViewModelTest {
             assertEquals(listOf("t2"), vm.state.value.groups.flatMap { it.rows }.map { it.txn.id })
             job.cancel()
         }
+
+    // ---------- 四格汇总（v1.9.5 第 5 条） ----------
+
+    @Test
+    fun `待报销合计只算本月支出，不含收入与转账`() =
+        runTest(dispatcher.scheduler) {
+            txnRepo.items["a"] = txn("a").copy(amount = 1000, pendingReimbursement = true)
+            txnRepo.items["b"] = txn("b").copy(amount = 2500, pendingReimbursement = true)
+            txnRepo.items["c"] = txn("c").copy(amount = 900, pendingReimbursement = false)
+            txnRepo.items["d"] =
+                txn("d").copy(type = TxnType.INCOME, amount = 5000, pendingReimbursement = true)
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(3500L, vm.state.value.pendingTotal)
+            assertEquals(2, vm.state.value.pendingCount)
+        }
+
+    @Test
+    fun `待报销不看是否计入统计`() =
+        runTest(dispatcher.scheduler) {
+            txnRepo.items["a"] = txn("a").copy(amount = 1200, pendingReimbursement = true, excludedFromStats = true)
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(1200L, vm.state.value.pendingTotal, "被排除统计的那笔照样能报销")
+            assertEquals(1, vm.state.value.pendingCount)
+            assertEquals(0L, vm.state.value.expense, "但它不进本月支出")
+        }
+
+    @Test
+    fun `没有待报销时合计为 0`() =
+        runTest(dispatcher.scheduler) {
+            txnRepo.items["a"] = txn("a").copy(amount = 1000)
+
+            val vm = viewModel()
+            backgroundScope.launch { vm.state.collect {} }
+            advanceUntilIdle()
+
+            assertEquals(0L, vm.state.value.pendingTotal)
+            assertEquals(0, vm.state.value.pendingCount)
+        }
 }
