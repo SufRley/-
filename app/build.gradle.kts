@@ -20,8 +20,8 @@ android {
         applicationId = "com.xxjz.ledger"
         minSdk = 30
         targetSdk = 35
-        versionCode = 16
-        versionName = "1.9.5"
+        versionCode = 17
+        versionName = "1.9.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
