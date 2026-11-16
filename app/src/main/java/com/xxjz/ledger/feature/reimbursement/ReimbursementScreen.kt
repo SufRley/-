@@ -57,7 +57,7 @@ import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.core.designsystem.component.CompactHeader
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.domain.model.Account
-import com.xxjz.ledger.domain.usecase.FundingAccounts
+import com.xxjz.ledger.domain.usecase.FundPayable
 import com.xxjz.ledger.feature.editor.EditorDatePickerDialog
 import java.time.LocalTime
 
@@ -284,7 +284,7 @@ private fun ReimburseDialog(
     var text by remember { mutableStateOf(MoneyFormatter.centsToPlain(row.txn.amount)) }
     // 默认到账账户 = 原支出的付款账户；它被删/被隐藏时不预选，由用户自己挑（不替用户决定钱去哪）
     var accountId by remember {
-        mutableStateOf(FundingAccounts.resolveDefault(accounts, row.txn.accountId)?.id)
+        mutableStateOf(FundPayable.resolveReimburseTarget(accounts, row.txn.accountId)?.id)
     }
     var dateTime by remember { mutableStateOf(System.currentTimeMillis()) }
     var showAccountPicker by remember { mutableStateOf(false) }
@@ -470,7 +470,7 @@ private fun PickerChip(
     }
 }
 
-/** 到账账户选择：只列资金账户（现金 / 储蓄卡 / 投资）。 */
+/** 到账账户选择：只列可付款账户（现金 / 储蓄卡 / 信用），投资与借贷不在其中。 */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AccountPickerSheet(

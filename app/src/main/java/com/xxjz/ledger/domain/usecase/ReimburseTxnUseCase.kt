@@ -129,7 +129,7 @@ class ReimburseTxnUseCase
         private fun validateTarget(target: Account?): AppError? =
             when {
                 target == null -> AppError.Custom("到账账户不存在")
-                target.type !in FundingAccounts.TYPES -> AppError.Custom("报销只能到账到资金账户")
+                target.type !in FundPayable.PAY_TYPES -> AppError.Custom("报销只能到账到现金 / 储蓄卡 / 信用账户")
                 target.hidden -> AppError.Custom("到账账户不可用")
                 else -> null
             }

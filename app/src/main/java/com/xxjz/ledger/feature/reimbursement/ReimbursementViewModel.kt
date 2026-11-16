@@ -11,7 +11,7 @@ import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
-import com.xxjz.ledger.domain.usecase.FundingAccounts
+import com.xxjz.ledger.domain.usecase.FundPayable
 import com.xxjz.ledger.domain.usecase.ReimburseTxnUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +42,7 @@ data class ReimbursementState(
     val done: List<ReimbursementRow> = emptyList(),
     val pendingTotal: Long = 0,
     val message: String? = null,
-    /** 可收报销款的账户（现金 / 储蓄卡 / 投资），按 sortOrder 排（v1.9.4 第 2 条）。 */
+    /** 可收报销款的账户（现金 / 储蓄卡 / 信用），按 sortOrder 排（v1.9.5 第 3 条收掉投资）。 */
     val fundingAccounts: List<Account> = emptyList(),
 )
 
@@ -67,7 +67,7 @@ class ReimbursementViewModel
             // 账户余额会随收款/改账户变化，跟着观察而不是拉一次快照
             viewModelScope.launch {
                 accountRepository.observeWithBalances().collect { list ->
-                    _state.update { it.copy(fundingAccounts = FundingAccounts.pickable(list)) }
+                    _state.update { it.copy(fundingAccounts = FundPayable.payableAccounts(list)) }
                 }
             }
         }

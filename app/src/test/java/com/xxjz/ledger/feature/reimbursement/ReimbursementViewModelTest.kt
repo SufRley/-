@@ -189,7 +189,7 @@ class ReimbursementViewModelTest {
     }
 
     @Test
-    @DisplayName("到账账户只列现金 / 储蓄卡 / 投资，且不含隐藏账户")
+    @DisplayName("到账账户只列现金 / 储蓄卡 / 信用，投资与借贷与隐藏账户都排除（v1.9.5 第 3 条）")
     fun fundingAccountsFiltered() =
         runTest(dispatcher.scheduler) {
             account("cash", AccountType.CASH, sortOrder = 0)
@@ -202,7 +202,7 @@ class ReimbursementViewModelTest {
             val vm = viewModel()
             advanceUntilIdle()
 
-            assertEquals(listOf("cash", "savings", "invest"), vm.state.value.fundingAccounts.map { it.id })
+            assertEquals(listOf("cash", "savings", "credit"), vm.state.value.fundingAccounts.map { it.id })
         }
 
     @Test

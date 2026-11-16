@@ -234,24 +234,13 @@ class ReimburseTxnUseCaseTest {
         }
 
     @Test
-    @DisplayName("信用账户不能收报销款")
-    fun creditAccountRejected() =
-        runTest {
-            pendingExpense(12_000)
-            account("credit", AccountType.CREDIT)
-            val result = useCase.confirm("t1", 12_000, accountId = "credit", dateTime = now, now = now)
-            assertEquals("报销只能到账到资金账户", (result as AppResult.Failure).error.message)
-            assertEquals(1, txnRepo.items.size, "校验失败不能写库")
-        }
-
-    @Test
     @DisplayName("借贷账户不能收报销款")
     fun debtAccountRejected() =
         runTest {
             pendingExpense(12_000)
             account("debt", AccountType.DEBT)
             val result = useCase.confirm("t1", 12_000, accountId = "debt", dateTime = now, now = now)
-            assertEquals("报销只能到账到资金账户", (result as AppResult.Failure).error.message)
+            assertEquals("报销只能到账到现金 / 储蓄卡 / 信用账户", (result as AppResult.Failure).error.message)
         }
 
     @Test
@@ -275,13 +264,26 @@ class ReimburseTxnUseCaseTest {
         }
 
     @Test
-    @DisplayName("投资账户是资金账户，可以收报销款")
-    fun investAccountAccepted() =
+    @DisplayName("投资账户不能收报销款（v1.9.5 第 3 条）")
+    fun investAccountRejected() =
         runTest {
             pendingExpense(12_000)
             account("invest", AccountType.INVEST)
-            val data = (useCase.confirm("t1", 12_000, accountId = "invest", dateTime = now, now = now) as AppResult.Success).data
-            assertEquals("invest", txnRepo.items.getValue(data.incomeTxnId).accountId)
+            val result = useCase.confirm("t1", 12_000, accountId = "invest", dateTime = now, now = now)
+            assertEquals("报销只能到账到现金 / 储蓄卡 / 信用账户", (result as AppResult.Failure).error.message)
+            // 被拒时不能留下半条收入流水
+            assertEquals(1, txnRepo.items.size)
+            assertTrue(txnRepo.items.getValue("t1").pendingReimbursement)
+        }
+
+    @Test
+    @DisplayName("信用账户可以收报销款（还款语义）")
+    fun creditAccountAccepted() =
+        runTest {
+            pendingExpense(12_000)
+            account("credit", AccountType.CREDIT)
+            val data = (useCase.confirm("t1", 12_000, accountId = "credit", dateTime = now, now = now) as AppResult.Success).data
+            assertEquals("credit", txnRepo.items.getValue(data.incomeTxnId).accountId)
         }
 
     @Test

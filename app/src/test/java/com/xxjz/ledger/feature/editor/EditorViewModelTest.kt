@@ -895,4 +895,77 @@ class EditorViewModelTest {
             assertEquals(900_00L, plan.principalCents)
             assertEquals(3, plan.periods)
         }
+
+    // ---------- 资金账户口径（v1.9.5 第 3、11 条） ----------
+
+    private fun withAllTypes() {
+        accountRepo.items["acc-cash"] = Account(id = "acc-cash", name = "现金", type = AccountType.CASH, sortOrder = 0)
+        accountRepo.items["acc-credit"] =
+            Account(id = "acc-credit", name = "招行", type = AccountType.CREDIT, sortOrder = 1)
+        accountRepo.items["acc-invest"] =
+            Account(id = "acc-invest", name = "证券", type = AccountType.INVEST, sortOrder = 2)
+        accountRepo.items["acc-debt"] = Account(id = "acc-debt", name = "张三", type = AccountType.DEBT, sortOrder = 3)
+    }
+
+    @Test
+    fun `支出付款账户不含投资与借贷`() =
+        runTest(dispatcher.scheduler) {
+            withAllTypes()
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            val ids = vm.state.value.payAccounts.map { it.id }
+            assertTrue(ids.containsAll(listOf("acc-1", "acc-cash", "acc-credit")))
+            assertFalse(ids.contains("acc-invest"))
+            assertFalse(ids.contains("acc-debt"))
+        }
+
+    @Test
+    fun `转账两端都含投资，收入可落投资，但都不含借贷`() =
+        runTest(dispatcher.scheduler) {
+            withAllTypes()
+            val vm = viewModel()
+            advanceUntilIdle()
+
+            assertTrue(vm.state.value.transferAccounts.any { it.id == "acc-invest" })
+            assertTrue(vm.state.value.incomeAccounts.any { it.id == "acc-invest" })
+            assertFalse(vm.state.value.transferAccounts.any { it.id == "acc-debt" })
+            assertFalse(vm.state.value.incomeAccounts.any { it.id == "acc-debt" })
+        }
+
+    @Test
+    fun `编辑一笔投资账户的支出时提示原账户不可用并置灰`() =
+        runTest(dispatcher.scheduler) {
+            withAllTypes()
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.selectCategory("breakfast")
+            vm.selectAccount("acc-invest")
+            vm.digit('3')
+            vm.digit('0')
+            vm.equals()
+
+            assertEquals("原账户不可用于付款，请重新选择", vm.state.value.saveBlocker)
+
+            // 换成可用账户后立刻放行，用户不必猜哪里出了问题
+            vm.selectAccount("acc-cash")
+            assertNull(vm.state.value.saveBlocker)
+        }
+
+    @Test
+    fun `借贷的资金账户不能用投资`() =
+        runTest(dispatcher.scheduler) {
+            withAllTypes()
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setType(TxnType.DEBT)
+            advanceUntilIdle()
+            vm.selectDebtAccount("acc-debt")
+            vm.selectAccount("acc-invest")
+            vm.digit('1')
+            vm.digit('0')
+            vm.equals()
+
+            assertEquals("资金账户不能是投资或借贷账户", vm.state.value.saveBlocker)
+        }
 }

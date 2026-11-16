@@ -30,6 +30,7 @@ import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.DebtAccountDraft
 import com.xxjz.ledger.domain.usecase.DebtOpDraft
+import com.xxjz.ledger.domain.usecase.FundPayable
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
 import com.xxjz.ledger.domain.usecase.RefundTxnUseCase
 import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
@@ -162,17 +163,46 @@ data class EditorUiState(
 
     val categoryName: String? get() = categories.firstOrNull { it.id == categoryId }?.name
 
+    /** 当前选中的付款（或资金）账户对象，供口径校验与图标取用。 */
+    val payAccount: Account? get() = accounts.firstOrNull { it.id == accountId }
+
+    val toAccount: Account? get() = accounts.firstOrNull { it.id == toAccountId }
+
     val accountName: String? get() = accounts.firstOrNull { it.id == accountId }?.name
 
     val toAccountName: String? get() = accounts.firstOrNull { it.id == toAccountId }?.name
 
     val debtAccountName: String? get() = accounts.firstOrNull { it.id == debtAccountId }?.name
 
-    /** 可选的借贷账户：全部借贷账户，不再按方向过滤（v1.9.0 净值模型）。 */
+    /** 借贷的对方账户：全部借贷账户，不再按方向过滤（v1.9.0 净值模型）。 */
     val debtAccounts: List<Account> get() = accounts.filter { it.type == AccountType.DEBT }
 
-    /** 资金账户：借贷账户不能当资金账户，否则等于自己借给自己。 */
-    val fundAccounts: List<Account> get() = accounts.filter { it.type != AccountType.DEBT }
+    /**
+     * 付款账户：现金 / 储蓄卡 / 信用（v1.9.5 第 11 条）。
+     *
+     * 投资账户被排除：它的余额是持仓里剩下的现金，不是可随时花掉的活钱。
+     * 从股票账户里扣一顿饭钱，账务上是错的——买入该走转账，不该走支出。
+     */
+    val payAccounts: List<Account> get() = FundPayable.payableAccounts(accounts)
+
+    /**
+     * 转账两端：在付款账户基础上加投资（v1.9.5 第 3 条）。
+     *
+     * 投资账户的买入与赎回都是转账，两端都得通，否则钱进不去也出不来。
+     */
+    val transferAccounts: List<Account> get() = FundPayable.transferAccounts(accounts)
+
+    /** 借贷的资金账户：钱从哪儿出，与付款同口径，不能用投资。 */
+    val fundAccounts: List<Account> get() = payAccounts
+
+    /**
+     * 收入能落到哪些账户（v1.9.5 第 11 条的边界）。
+     *
+     * 收入不是"付款"，所以投资账户可以收——股息、分红、赎回款都真实存在。
+     * 但借贷账户不行：它的余额表示"对方欠我多少"，往里面记一笔收入会把欠款算乱。
+     * 口径恰好与转账两端一致，故直接复用。
+     */
+    val incomeAccounts: List<Account> get() = transferAccounts
 
     /** 当前类型的完整分类树。 */
     val tree: List<Pair<Category, List<Category>>>
@@ -219,16 +249,22 @@ data class EditorUiState(
                     when {
                         categoryId == null -> "请选择分类"
                         accountId == null -> "请选择账户"
+                        // 历史数据里可能有「支出 + 投资账户」：编辑时不偷偷改账户，只说清为什么不给存
+                        type == TxnType.EXPENSE && !FundPayable.canPay(payAccount) ->
+                            "原账户不可用于付款，请重新选择"
                         else -> null
                     }
                 type == TxnType.DEBT ->
                     when {
                         debtAccountId == null -> "请选择借贷账户"
                         accountId == null -> "请选择资金账户"
+                        !FundPayable.canPay(payAccount) -> "资金账户不能是投资或借贷账户"
                         else -> null
                     }
                 accountId == null -> "请选择账户"
                 type == TxnType.TRANSFER && toAccountId == null -> "请选择转入账户"
+                type == TxnType.TRANSFER && !FundPayable.canTransfer(payAccount) -> "转出账户不可用，请重新选择"
+                type == TxnType.TRANSFER && !FundPayable.canTransfer(toAccount) -> "转入账户不可用，请重新选择"
                 else -> null
             }
 }

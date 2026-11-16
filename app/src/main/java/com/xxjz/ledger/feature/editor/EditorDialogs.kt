@@ -62,8 +62,13 @@ internal fun EditorPickDialogs(
 
     if (show.account) {
         AccountPickerDialog(
-            // 借贷类型下资金账户不能是借贷账户本身
-            accounts = if (state.type == TxnType.DEBT) state.fundAccounts else state.accounts,
+            // 三种口径各走各的：支出付款不含投资、收入可收进投资、转账两端都含投资；都不含借贷
+            accounts =
+                when (state.type) {
+                    TxnType.TRANSFER -> state.transferAccounts
+                    TxnType.INCOME -> state.incomeAccounts
+                    else -> state.payAccounts
+                },
             selectedId = state.accountId,
             title =
                 when (state.type) {
@@ -81,7 +86,7 @@ internal fun EditorPickDialogs(
 
     if (show.toAccount) {
         AccountPickerDialog(
-            accounts = state.accounts,
+            accounts = state.transferAccounts,
             selectedId = state.toAccountId,
             title = "转入账户",
             onSelect = {
