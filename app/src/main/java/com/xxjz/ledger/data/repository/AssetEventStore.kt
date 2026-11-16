@@ -48,7 +48,7 @@ class AssetEventStore
         /** 记录一条事件；[seq] 用于同一毫秒内多条事件避免 key 冲突。 */
         override suspend fun record(
             event: AssetEvent,
-            seq: Int = 0,
+            seq: Int,
         ) {
             val row =
                 Row(
