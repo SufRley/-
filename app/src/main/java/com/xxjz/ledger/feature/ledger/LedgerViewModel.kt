@@ -4,18 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.datastore.AppSettings
-import com.xxjz.ledger.data.datastore.SettingsRepository
-import com.xxjz.ledger.data.datastore.shouldShowBackupHint
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.model.shouldShowBackupHint
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.InstallmentRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.StartInstallmentUseCase
@@ -248,7 +248,7 @@ class LedgerViewModel
             viewModelScope.launch {
                 templateRepository.upsert(
                     Template(
-                        id = SeedData.newId("tpl"),
+                        id = Ids.newId("tpl"),
                         name = name.ifBlank { "记账模板" }.take(12),
                         type = txn.type,
                         amount = txn.amount,

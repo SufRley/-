@@ -3,9 +3,9 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.testutil.FakeAccountRepository
@@ -77,7 +77,7 @@ class ReimburseTxnUseCaseTest {
             val income = txnRepo.items[data.incomeTxnId]!!
             assertEquals(TxnType.INCOME, income.type)
             assertEquals(12_000, income.amount)
-            assertEquals(SeedData.REIMBURSE_CATEGORY_ID, income.categoryId)
+            assertEquals(Ids.REIMBURSE_CATEGORY_ID, income.categoryId)
             assertEquals("t1", income.parentTxnId)
             assertEquals("acc-1", income.accountId)
         }

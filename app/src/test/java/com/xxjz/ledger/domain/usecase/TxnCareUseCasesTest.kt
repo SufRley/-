@@ -2,7 +2,7 @@ package com.xxjz.ledger.domain.usecase
 
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.testutil.FakeCategoryRepository
@@ -51,7 +51,7 @@ class TxnCareUseCasesTest {
             assertEquals(TxnType.INCOME, refundTxn.type)
             assertEquals(3_000L, refundTxn.amount)
             assertEquals("e1", refundTxn.refundOfTxnId)
-            assertEquals(SeedData.REFUND_CATEGORY_ID, refundTxn.categoryId)
+            assertEquals(Ids.REFUND_CATEGORY_ID, refundTxn.categoryId)
             assertEquals("acc-1", refundTxn.accountId)
             assertEquals(3_000L, repo.refundedTotal("e1"))
         }

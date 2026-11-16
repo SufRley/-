@@ -24,7 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.AppLockGuard
 import com.xxjz.ledger.core.common.AppLockState
 import com.xxjz.ledger.core.common.PinHasher
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors

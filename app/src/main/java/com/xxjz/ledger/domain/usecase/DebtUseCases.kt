@@ -4,11 +4,11 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.DebtAction
 import com.xxjz.ledger.domain.model.DebtDirection
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
@@ -62,7 +62,7 @@ class SaveDebtAccountUseCase
 
             val account =
                 Account(
-                    id = existing?.id ?: SeedData.newId("acc"),
+                    id = existing?.id ?: Ids.newId("acc"),
                     name = name,
                     type = AccountType.DEBT,
                     // 新建账户的初始余额恒为 0：本金走流水，这样资金侧同时减少，
@@ -135,7 +135,7 @@ class RecordDebtOpUseCase
             val now = System.currentTimeMillis()
             val txn =
                 Txn(
-                    id = SeedData.newId("txn"),
+                    id = Ids.newId("txn"),
                     type = TxnType.DEBT,
                     amount = draft.amountCents,
                     categoryId = null,

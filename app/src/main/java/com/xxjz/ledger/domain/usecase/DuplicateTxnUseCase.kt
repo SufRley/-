@@ -3,7 +3,7 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import javax.inject.Inject
@@ -25,7 +25,7 @@ class DuplicateTxnUseCase
             val source = txnRepository.byId(sourceId) ?: return AppResult.Failure(AppError.NotFound)
             val copy =
                 source.copy(
-                    id = SeedData.newId("txn"),
+                    id = Ids.newId("txn"),
                     dateTime = now,
                     dateKey = DateUtils.dateKeyOf(now),
                     refundOfTxnId = null,

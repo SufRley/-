@@ -1,8 +1,10 @@
 package com.xxjz.ledger.data.backup
 
 import com.xxjz.ledger.BuildConfig
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.BackupSettings
 import javax.inject.Inject
 import javax.inject.Singleton
 

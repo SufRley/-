@@ -8,9 +8,9 @@ import com.xxjz.ledger.data.local.entity.DebtEntity
 import com.xxjz.ledger.data.local.entity.TagEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.data.local.seed.Seeder
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.TxnType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -213,7 +213,7 @@ class DaoAggregationTest {
             assertEquals(7, foodChildren.size)
             assertEquals("早餐", foodChildren.first().name)
 
-            assertNotNull(db.categoryDao().byId(SeedData.REFUND_CATEGORY_ID))
+            assertNotNull(db.categoryDao().byId(Ids.REFUND_CATEGORY_ID))
             assertEquals(1, db.accountDao().count())
             assertNotNull(db.ledgerDao().defaultLedger())
             assertEquals("1", db.metaDao().get(AppDatabase.KEY_SEED))

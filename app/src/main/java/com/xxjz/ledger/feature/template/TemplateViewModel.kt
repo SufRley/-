@@ -2,7 +2,7 @@ package com.xxjz.ledger.feature.template
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.TemplateRepository
@@ -36,7 +36,7 @@ class TemplateViewModel
                 val existing = id?.let { repository.byId(it) }
                 val template =
                     Template(
-                        id = existing?.id ?: SeedData.newId("tpl"),
+                        id = existing?.id ?: Ids.newId("tpl"),
                         name = trimmed.take(20),
                         type = type,
                         amount = amountCents,

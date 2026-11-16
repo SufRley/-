@@ -3,7 +3,7 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.CategoryRepository
@@ -42,10 +42,10 @@ class RefundTxnUseCase
 
             val refund =
                 Txn(
-                    id = SeedData.newId("txn"),
+                    id = Ids.newId("txn"),
                     type = TxnType.INCOME,
                     amount = amountCents,
-                    categoryId = SeedData.REFUND_CATEGORY_ID,
+                    categoryId = Ids.REFUND_CATEGORY_ID,
                     accountId = original.accountId,
                     dateTime = now,
                     dateKey = DateUtils.dateKeyOf(now),
@@ -55,7 +55,7 @@ class RefundTxnUseCase
                     updatedAt = now,
                 )
             txnRepository.insert(refund)
-            categoryRepository.increaseUsage(SeedData.REFUND_CATEGORY_ID)
+            categoryRepository.increaseUsage(Ids.REFUND_CATEGORY_ID)
             return AppResult.Success(refund.id)
         }
     }

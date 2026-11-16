@@ -6,7 +6,7 @@ import com.xxjz.ledger.core.common.Logger
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.entity.AccountEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -84,7 +84,7 @@ class DebtToAccountMigrator
                             if (remain > 0L) {
                                 db.txnDao().insert(
                                     TxnEntity(
-                                        id = SeedData.newId("txn"),
+                                        id = Ids.newId("txn"),
                                         type = "DEBT",
                                         amount = remain,
                                         categoryId = null,

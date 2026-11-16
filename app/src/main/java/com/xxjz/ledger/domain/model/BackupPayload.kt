@@ -1,4 +1,4 @@
-package com.xxjz.ledger.data.backup
+package com.xxjz.ledger.domain.model
 
 import kotlinx.serialization.Serializable
 

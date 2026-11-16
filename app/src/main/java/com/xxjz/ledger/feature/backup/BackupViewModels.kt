@@ -6,12 +6,12 @@ import com.xxjz.ledger.data.backup.BackupCodec
 import com.xxjz.ledger.data.backup.BackupCrypto
 import com.xxjz.ledger.data.backup.BackupException
 import com.xxjz.ledger.data.backup.BackupFailure
-import com.xxjz.ledger.data.backup.BackupPayload
 import com.xxjz.ledger.data.backup.BackupPayloadBuilder
-import com.xxjz.ledger.data.backup.BackupStats
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.io.DocumentIo
-import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.BackupStats
+import com.xxjz.ledger.domain.repository.BackupRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.usecase.RestoreBackupUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -192,6 +192,7 @@ class RestoreViewModel
         private val codec: BackupCodec,
         private val io: DocumentIo,
         private val restore: RestoreBackupUseCase,
+        private val backupRepository: BackupRepository,
     ) : ViewModel() {
         internal var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 
@@ -230,7 +231,7 @@ class RestoreViewModel
                         if (!BackupCrypto.looksLikeBackup(bytes)) {
                             throw BackupException(BackupFailure.NOT_BACKUP, "这不是「一心记账」的备份文件")
                         }
-                        codec.decode(bytes, s.password, currentSchemaVersion = AppDatabase.SCHEMA_VERSION)
+                        codec.decode(bytes, s.password, currentSchemaVersion = backupRepository.schemaVersion)
                     }
                 result.fold(
                     onSuccess = { payload -> _state.update { it.copy(decrypting = false, preview = payload) } },

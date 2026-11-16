@@ -1,9 +1,6 @@
-package com.xxjz.ledger.feature.recurring
+package com.xxjz.ledger.domain.model
 
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.domain.model.RecurringPeriod
-import com.xxjz.ledger.domain.model.RecurringRule
-import com.xxjz.ledger.domain.model.TxnType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

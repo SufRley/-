@@ -1,8 +1,6 @@
-package com.xxjz.ledger.feature.recurring
+package com.xxjz.ledger.domain.model
 
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.domain.model.RecurringPeriod
-import com.xxjz.ledger.domain.model.RecurringRule
 import java.time.LocalDateTime
 
 /** 周期规则的展示状态。 */

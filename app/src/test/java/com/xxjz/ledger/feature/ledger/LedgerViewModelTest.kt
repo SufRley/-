@@ -1,7 +1,7 @@
 package com.xxjz.ledger.feature.ledger
 
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.datastore.AppSettings
+import com.xxjz.ledger.domain.model.AppSettings
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase

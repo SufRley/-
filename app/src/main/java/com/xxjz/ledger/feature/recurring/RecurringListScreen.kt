@@ -46,6 +46,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.MoneyFormatter
 import com.xxjz.ledger.core.designsystem.component.EmptyState
+import com.xxjz.ledger.domain.model.RecurringStatus
 import com.xxjz.ledger.domain.model.TxnType
 
 /** P16 周期任务列表（AC-53 / AC-54 / AC-57）。 */

@@ -3,13 +3,13 @@ package com.xxjz.ledger.feature.trash
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.TrashCleanupUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel

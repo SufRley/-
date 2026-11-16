@@ -1,6 +1,7 @@
 package com.xxjz.ledger.data.backup
 
 import com.xxjz.ledger.core.common.Logger
+import com.xxjz.ledger.domain.model.BackupPayload
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton

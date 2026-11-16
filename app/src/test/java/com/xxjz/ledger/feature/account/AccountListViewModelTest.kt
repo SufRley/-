@@ -1,10 +1,10 @@
 package com.xxjz.ledger.feature.account
 
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.usecase.DeleteAccountUseCase
 import com.xxjz.ledger.domain.usecase.GetAssetSummaryUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository

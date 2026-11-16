@@ -1,11 +1,11 @@
 package com.xxjz.ledger.feature.trash
 
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.AppSettings
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetScope
 import com.xxjz.ledger.domain.model.Txn

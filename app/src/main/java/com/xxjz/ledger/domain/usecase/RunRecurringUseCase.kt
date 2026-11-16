@@ -3,13 +3,13 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
+import com.xxjz.ledger.domain.model.RecurringCalc
 import com.xxjz.ledger.domain.model.RecurringRule
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.RecurringRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
-import com.xxjz.ledger.feature.recurring.RecurringCalc
 import javax.inject.Inject
 
 /**
@@ -80,7 +80,7 @@ class RunRecurringUseCase
             runAt: Long,
         ): Txn =
             Txn(
-                id = SeedData.newId("txn"),
+                id = Ids.newId("txn"),
                 type = rule.type,
                 amount = rule.amount,
                 categoryId = if (rule.type == TxnType.EXPENSE || rule.type == TxnType.INCOME) rule.categoryId else null,

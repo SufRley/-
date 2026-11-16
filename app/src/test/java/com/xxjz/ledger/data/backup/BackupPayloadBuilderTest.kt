@@ -1,7 +1,6 @@
 package com.xxjz.ledger.data.backup
 
-import com.xxjz.ledger.data.datastore.AppSettings
-import com.xxjz.ledger.data.datastore.DefaultTimeMode
+
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.entity.AccountEntity
@@ -10,6 +9,9 @@ import com.xxjz.ledger.data.local.entity.CategoryEntity
 import com.xxjz.ledger.data.local.entity.TagEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.DefaultTimeMode
 import com.xxjz.ledger.domain.model.TxnType
 import kotlinx.coroutines.test.runTest
 import org.junit.After

@@ -41,8 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.xxjz.ledger.core.common.PinHasher
-import com.xxjz.ledger.data.datastore.DefaultTimeMode
-import com.xxjz.ledger.data.datastore.KeypadType
+import com.xxjz.ledger.domain.model.DefaultTimeMode
+import com.xxjz.ledger.domain.model.KeypadType
 import com.xxjz.ledger.ui.lock.BiometricAvailability
 
 /** 设置页（AC-95）：记账默认值、外观、提醒、回收站、应用锁。 */

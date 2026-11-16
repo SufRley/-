@@ -64,9 +64,9 @@ import com.xxjz.ledger.core.designsystem.component.CompactHeader
 import com.xxjz.ledger.core.designsystem.component.ConfirmDialog
 import com.xxjz.ledger.core.designsystem.component.EmptyState
 import com.xxjz.ledger.core.designsystem.theme.profitColor
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.Ids
 
 /** P13 账户列表：总资产、资金/信用/借贷三组、隐藏与删除（AC-16 / AC-20 / AC-21）。 */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -603,7 +603,7 @@ private fun AccountEditDialog(
                 onClick = {
                     onSave(
                         Account(
-                            id = account?.id ?: SeedData.newId("acc"),
+                            id = account?.id ?: Ids.newId("acc"),
                             name = name.trim(),
                             type = type,
                             initialBalance = initialCents,

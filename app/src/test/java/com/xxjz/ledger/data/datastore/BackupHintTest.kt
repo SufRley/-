@@ -1,5 +1,6 @@
 package com.xxjz.ledger.data.datastore
 
+import com.xxjz.ledger.domain.model.shouldShowBackupHint
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName

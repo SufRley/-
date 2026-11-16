@@ -1,7 +1,7 @@
 package com.xxjz.ledger.domain.usecase
 
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.InstallmentSchedule
 import com.xxjz.ledger.domain.model.Txn
@@ -80,7 +80,7 @@ class RunInstallmentUseCase
             runAt: Long,
         ): Txn =
             source.copy(
-                id = SeedData.newId("txn"),
+                id = Ids.newId("txn"),
                 amount = cents,
                 note = "${source.note}（分期 $periodIndex/${plan.periods}）".trim().take(200),
                 dateTime = runAt,

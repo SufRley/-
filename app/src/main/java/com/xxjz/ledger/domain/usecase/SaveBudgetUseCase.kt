@@ -3,10 +3,10 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetPeriod
 import com.xxjz.ledger.domain.model.BudgetScope
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import javax.inject.Inject
 
@@ -46,7 +46,7 @@ class SaveBudgetUseCase
 
             getBudgetForMonth.materialize(monthKey)
 
-            val id = draft.id ?: SeedData.newId("budget")
+            val id = draft.id ?: Ids.newId("budget")
             val name =
                 draft.name.trim().ifBlank {
                     when (draft.scope) {

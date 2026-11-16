@@ -2,8 +2,8 @@ package com.xxjz.ledger.feature.mine
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.repository.AccountRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.usecase.AssetSummary
 import com.xxjz.ledger.domain.usecase.GetAssetSummaryUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel

@@ -2,10 +2,11 @@ package com.xxjz.ledger.data.di
 
 import android.content.Context
 import com.xxjz.ledger.data.datastore.SettingsDataStore
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.io.ContentResolverDocumentIo
 import com.xxjz.ledger.data.io.DocumentIo
 import com.xxjz.ledger.data.repository.AccountRepositoryImpl
+import com.xxjz.ledger.data.repository.AssetEventStore
+import com.xxjz.ledger.data.repository.BackupRepositoryImpl
 import com.xxjz.ledger.data.repository.BudgetRepositoryImpl
 import com.xxjz.ledger.data.repository.CategoryRepositoryImpl
 import com.xxjz.ledger.data.repository.InstallmentRepositoryImpl
@@ -15,11 +16,14 @@ import com.xxjz.ledger.data.repository.TagRepositoryImpl
 import com.xxjz.ledger.data.repository.TemplateRepositoryImpl
 import com.xxjz.ledger.data.repository.TxnRepositoryImpl
 import com.xxjz.ledger.domain.repository.AccountRepository
+import com.xxjz.ledger.domain.repository.AssetEventRepository
+import com.xxjz.ledger.domain.repository.BackupRepository
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.InstallmentRepository
 import com.xxjz.ledger.domain.repository.MerchantRepository
 import com.xxjz.ledger.domain.repository.RecurringRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TagRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
@@ -71,6 +75,16 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: SettingsDataStore): SettingsRepository
+
+    /** 备份的整库替换与回收站清理：Room 细节关在实现里。 */
+    @Binds
+    @Singleton
+    abstract fun bindBackupRepository(impl: BackupRepositoryImpl): BackupRepository
+
+    /** 资产变化事件存储：domain 只认契约。 */
+    @Binds
+    @Singleton
+    abstract fun bindAssetEventRepository(impl: AssetEventStore): AssetEventRepository
 
     @Binds
     @Singleton

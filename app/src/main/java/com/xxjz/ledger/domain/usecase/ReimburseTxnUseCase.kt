@@ -3,8 +3,8 @@ package com.xxjz.ledger.domain.usecase
 import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
@@ -27,7 +27,7 @@ data class ReimburseResult(
  * 口径：
  * - 原支出金额不变，只记「已报销金额」；净支出 = 原支出 - 报销收入 = 自付部分，
  *   所以差额不需要额外生成流水，报表自然收敛；
- * - 报销收入统一落在预置的「报销」分类（[SeedData.REIMBURSE_CATEGORY_ID]），不复用用户分类，
+ * - 报销收入统一落在预置的「报销」分类（[Ids.REIMBURSE_CATEGORY_ID]），不复用用户分类，
  *   报表里可以单独看到「报销」这一项，不会被工资/副业污染；
  * - 撤销 = 删掉那笔收入 + 原账目回到待报销状态，两步在同一次调用里完成（AC-62）。
  */
@@ -70,10 +70,10 @@ class ReimburseTxnUseCase
 
             val income =
                 Txn(
-                    id = SeedData.newId("txn"),
+                    id = Ids.newId("txn"),
                     type = TxnType.INCOME,
                     amount = actualCents,
-                    categoryId = SeedData.REIMBURSE_CATEGORY_ID,
+                    categoryId = Ids.REIMBURSE_CATEGORY_ID,
                     accountId = targetId,
                     dateTime = dateTime,
                     dateKey = DateUtils.dateKeyOf(dateTime),
@@ -84,7 +84,7 @@ class ReimburseTxnUseCase
                 )
             txnRepository.insert(income)
             txnRepository.setReimbursed(original.id, actualCents, now, now, pending = false)
-            categoryRepository.increaseUsage(SeedData.REIMBURSE_CATEGORY_ID)
+            categoryRepository.increaseUsage(Ids.REIMBURSE_CATEGORY_ID)
             return AppResult.Success(
                 ReimburseResult(
                     incomeTxnId = income.id,

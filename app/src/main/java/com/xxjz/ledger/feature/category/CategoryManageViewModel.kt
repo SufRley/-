@@ -135,7 +135,7 @@ class CategoryManageViewModel
             viewModelScope.launch {
                 categoryRepository.upsert(
                     Category(
-                        id = id ?: com.xxjz.ledger.data.local.seed.SeedData.newId("cat"),
+                        id = id ?: com.xxjz.ledger.domain.model.Ids.newId("cat"),
                         name = trimmed,
                         parentId = parentId,
                         type = snapshot.type,
@@ -199,7 +199,7 @@ class CategoryManageViewModel
                 val target = existing.firstOrNull { it.id == id }
                 tagRepository.upsert(
                     Tag(
-                        id = id ?: com.xxjz.ledger.data.local.seed.SeedData.newId("tag"),
+                        id = id ?: com.xxjz.ledger.domain.model.Ids.newId("tag"),
                         name = trimmed,
                         color = target?.color.orEmpty(),
                         usageCount = target?.usageCount ?: 0,

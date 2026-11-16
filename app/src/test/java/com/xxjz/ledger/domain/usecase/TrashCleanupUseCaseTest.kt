@@ -1,9 +1,7 @@
 package com.xxjz.ledger.domain.usecase
 
 import com.xxjz.ledger.core.common.AppResult
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.datastore.SettingsDataStore
-import com.xxjz.ledger.data.datastore.needsBackupReminder
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.entity.AccountEntity
@@ -11,6 +9,10 @@ import com.xxjz.ledger.data.local.entity.BudgetEntity
 import com.xxjz.ledger.data.local.entity.TagEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
+import com.xxjz.ledger.data.repository.BackupRepositoryImpl
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.needsBackupReminder
 import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -39,7 +41,7 @@ class TrashCleanupUseCaseTest {
     fun setUp() {
         db = TestDatabaseFactory.create()
         settings = mockk(relaxed = true)
-        useCase = TrashCleanupUseCase(db, settings)
+        useCase = TrashCleanupUseCase(BackupRepositoryImpl(db, DebtToAccountMigrator(db)), settings)
     }
 
     @After

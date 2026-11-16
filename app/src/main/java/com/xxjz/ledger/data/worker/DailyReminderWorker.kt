@@ -20,7 +20,7 @@ import com.xxjz.ledger.R
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.ReminderMessage
 import com.xxjz.ledger.core.common.ReminderPlanner
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn

@@ -4,14 +4,15 @@ import com.xxjz.ledger.data.local.entity.AccountEntity
 import com.xxjz.ledger.data.local.entity.CategoryEntity
 import com.xxjz.ledger.data.local.entity.LedgerEntity
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.TxnType
-import java.util.UUID
 
 /**
  * 预置数据（AC-91）。
  *
  * 首次启动写入：默认账本、默认现金账户、常用分类树（餐饮/交通/购物/居住/娱乐/医疗/教育/人情/其他
- * + 各自小类），以及收入分类。所有 id 用固定前缀，保证多台设备/重装后语义一致。
+ * + 各自小类），以及收入分类。所有 id 用固定前缀，保证多台设备/重装后语义一致；
+ * id 生成规则与预置 id 常量在 domain 层的 [Ids]。
  */
 object SeedData {
     private const val EXP = "exp"
@@ -40,15 +41,15 @@ object SeedData {
         )
 
     /** 收入分类中「退款」的固定 id，退款用例会自动生成该分类下的收入。 */
-    const val REFUND_CATEGORY_ID = "inc_refund"
+    const val REFUND_CATEGORY_ID = Ids.REFUND_CATEGORY_ID
 
     /** 收入分类中「报销」的固定 id，报销确认时生成的收入一律落在该分类（AC-60）。 */
-    const val REIMBURSE_CATEGORY_ID = "inc_reimburse"
+    const val REIMBURSE_CATEGORY_ID = Ids.REIMBURSE_CATEGORY_ID
 
-    const val DEFAULT_ACCOUNT_ID = "acc_default_cash"
+    const val DEFAULT_ACCOUNT_ID = Ids.DEFAULT_ACCOUNT_ID
 
     /** 默认账本 id。 */
-    const val DEFAULT_LEDGER_ID = "ledger_default"
+    const val DEFAULT_LEDGER_ID = Ids.DEFAULT_LEDGER_ID
 
     fun defaultLedger(): LedgerEntity = LedgerEntity(id = DEFAULT_LEDGER_ID, name = "默认账本", isDefault = true)
 
@@ -146,7 +147,4 @@ object SeedData {
         }
         return result
     }
-
-    /** 生成业务 id。 */
-    fun newId(prefix: String): String = "$prefix-${UUID.randomUUID()}"
 }

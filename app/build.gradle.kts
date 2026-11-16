@@ -93,7 +93,6 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.androidx.compose.bom))
@@ -114,8 +113,6 @@ dependencies {
 
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.hilt.work)
-    ksp(libs.androidx.hilt.compiler)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -129,15 +126,13 @@ dependencies {
 
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
-    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.13.4")
+    testRuntimeOnly(libs.junit.vintage.engine)
     testImplementation(libs.junit4)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
-    testImplementation(libs.androidx.room.testing)
     testImplementation(libs.androidx.sqlite.bundled)
-    testImplementation(libs.androidx.work.testing)
     testImplementation(libs.mockk)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test)
@@ -164,6 +159,11 @@ tasks.withType<Test>().configureEach {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
+    // 把测试 classpath 落盘，供 CI/脚本核对测试依赖（原来在文件末尾的第二个重复块）
+    doLast {
+        project.layout.buildDirectory.file("testcp-${name}.txt").get().asFile
+            .writeText(classpath.files.joinToString(File.pathSeparator))
+    }
 }
 
 ktlint {
@@ -183,11 +183,4 @@ detekt {
 
 tasks.named("check") {
     dependsOn("ktlintCheck", "detekt")
-}
-
-tasks.withType<Test>().configureEach {
-    doLast {
-        project.layout.buildDirectory.file("testcp-${name}.txt").get().asFile
-            .writeText(classpath.files.joinToString(File.pathSeparator))
-    }
 }

@@ -2,8 +2,8 @@ package com.xxjz.ledger.feature.budget
 
 import app.cash.turbine.test
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.datastore.SettingsDataStore
+import com.xxjz.ledger.domain.model.AppSettings
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetScope
 import com.xxjz.ledger.domain.model.Category

@@ -14,7 +14,7 @@ import com.xxjz.ledger.core.common.ShortcutAction
 import com.xxjz.ledger.core.common.hasNotificationPermission
 import com.xxjz.ledger.core.designsystem.theme.ThemeMode
 import com.xxjz.ledger.core.designsystem.theme.XxjzTheme
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.navigation.XxjzApp
 import com.xxjz.ledger.ui.lock.AppLockHost
 import dagger.hilt.android.AndroidEntryPoint

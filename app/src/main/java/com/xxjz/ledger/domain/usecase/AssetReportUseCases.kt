@@ -1,7 +1,6 @@
 package com.xxjz.ledger.domain.usecase
 
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.repository.AssetEventStore
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AssetEvent
 import com.xxjz.ledger.domain.model.AssetEventKind
@@ -9,6 +8,7 @@ import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
+import com.xxjz.ledger.domain.repository.AssetEventRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import kotlinx.coroutines.flow.Flow
@@ -64,7 +64,7 @@ class GetNetWorthTrendUseCase
     constructor(
         private val accountRepository: AccountRepository,
         private val txnRepository: TxnRepository,
-        private val assetEventStore: AssetEventStore,
+        private val assetEventStore: AssetEventRepository,
     ) {
         companion object {
             /** 月视图点数。 */
@@ -159,7 +159,7 @@ class GetAssetChangesUseCase
         private val accountRepository: AccountRepository,
         private val txnRepository: TxnRepository,
         private val categoryRepository: CategoryRepository,
-        private val assetEventStore: AssetEventStore,
+        private val assetEventStore: AssetEventRepository,
     ) {
         companion object {
             /** 默认返回条数：够翻一屏半，再往上翻收益太低。 */

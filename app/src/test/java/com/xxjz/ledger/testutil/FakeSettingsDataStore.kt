@@ -1,11 +1,11 @@
 package com.xxjz.ledger.testutil
 
-import com.xxjz.ledger.data.backup.BackupSettings
-import com.xxjz.ledger.data.datastore.AppSettings
-import com.xxjz.ledger.data.datastore.DefaultTimeMode
-import com.xxjz.ledger.data.datastore.KeypadType
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.BackupSettings
+import com.xxjz.ledger.domain.model.DefaultTimeMode
+import com.xxjz.ledger.domain.model.KeypadType
 import com.xxjz.ledger.domain.model.TxnType
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 

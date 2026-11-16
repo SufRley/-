@@ -4,12 +4,12 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
+import com.xxjz.ledger.domain.model.RecurringCalc
 import com.xxjz.ledger.domain.model.RecurringPeriod
 import com.xxjz.ledger.domain.model.RecurringRule
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.RecurringRepository
-import com.xxjz.ledger.feature.recurring.RecurringCalc
 import javax.inject.Inject
 
 /** 结束条件：永不 / 执行 N 次 / 指定日期（AC-56）。 */
@@ -55,7 +55,7 @@ class SaveRecurringUseCase
             val startChanged = existing == null || !sameDay(existing.nextRunAt, draft.startAt)
             val rule =
                 RecurringRule(
-                    id = existing?.id ?: SeedData.newId("rec"),
+                    id = existing?.id ?: Ids.newId("rec"),
                     type = draft.type,
                     amount = draft.amountCents,
                     categoryId = if (draft.type == TxnType.TRANSFER) null else draft.categoryId,

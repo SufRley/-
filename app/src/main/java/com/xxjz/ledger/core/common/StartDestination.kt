@@ -1,7 +1,7 @@
 package com.xxjz.ledger.core.common
 
 import android.content.Context
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**

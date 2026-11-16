@@ -4,12 +4,12 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.BillCycle
 import com.xxjz.ledger.domain.model.BillCycleCalculator
 import com.xxjz.ledger.domain.model.FeeMode
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.InstallmentPeriod
 import com.xxjz.ledger.domain.model.InstallmentSchedule
@@ -173,7 +173,7 @@ class CreateInstallmentUseCase
 
             val plan =
                 Installment(
-                    id = SeedData.newId("inst"),
+                    id = Ids.newId("inst"),
                     scope = draft.scope,
                     txnId = if (draft.scope == InstallmentScope.TXN) draft.txnId else null,
                     accountId = account.id,
@@ -278,7 +278,7 @@ class RepayCreditUseCase
             val now = System.currentTimeMillis()
             val txn =
                 Txn(
-                    id = SeedData.newId("txn"),
+                    id = Ids.newId("txn"),
                     type = TxnType.EXPENSE,
                     amount = amountCents,
                     categoryId = null,

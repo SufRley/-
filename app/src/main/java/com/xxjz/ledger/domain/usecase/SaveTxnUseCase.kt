@@ -4,7 +4,7 @@ import com.xxjz.ledger.core.common.AppError
 import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.Ids
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.CategoryRepository
@@ -61,7 +61,7 @@ class SaveTxnUseCase
 
             val txn =
                 Txn(
-                    id = existing?.id ?: SeedData.newId("txn"),
+                    id = existing?.id ?: Ids.newId("txn"),
                     type = draft.type,
                     amount = draft.amountCents,
                     categoryId =

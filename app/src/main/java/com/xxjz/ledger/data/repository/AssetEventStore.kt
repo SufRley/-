@@ -4,6 +4,7 @@ import com.xxjz.ledger.data.local.dao.MetaDao
 import com.xxjz.ledger.data.local.dao.MetaEntity
 import com.xxjz.ledger.domain.model.AssetEvent
 import com.xxjz.ledger.domain.model.AssetEventKind
+import com.xxjz.ledger.domain.repository.AssetEventRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.Serializable
@@ -25,7 +26,7 @@ class AssetEventStore
     @Inject
     constructor(
         private val metaDao: MetaDao,
-    ) {
+    ) : AssetEventRepository {
         /** 只读写自己写的结构，未知键忽略、默认值照写，便于后续加字段。 */
         private val json =
             Json {
@@ -45,7 +46,7 @@ class AssetEventStore
         )
 
         /** 记录一条事件；[seq] 用于同一毫秒内多条事件避免 key 冲突。 */
-        suspend fun record(
+        override suspend fun record(
             event: AssetEvent,
             seq: Int = 0,
         ) {
@@ -64,7 +65,7 @@ class AssetEventStore
         }
 
         /** 全部事件，按时间倒序。解析失败的脏数据直接跳过，不让一条坏记录拖垮整个报表。 */
-        suspend fun listAll(): List<AssetEvent> = metaDao.listByPrefix(PREFIX).mapNotNull(::parse)
+        override suspend fun listAll(): List<AssetEvent> = metaDao.listByPrefix(PREFIX).mapNotNull(::parse)
 
         /** 单条解析：脏数据直接跳过，不让一条坏记录拖垮整个报表。 */
         private fun parse(entity: MetaEntity): AssetEvent? =
@@ -82,7 +83,7 @@ class AssetEventStore
             }.getOrNull()
 
         /** 响应式版本：资产报表订阅用，改市值后列表即时刷新。 */
-        fun observeAll(): Flow<List<AssetEvent>> = metaDao.observeByPrefix(PREFIX).map { it.mapNotNull(::parse) }
+        override fun observeAll(): Flow<List<AssetEvent>> = metaDao.observeByPrefix(PREFIX).map { it.mapNotNull(::parse) }
 
         companion object {
             const val PREFIX = "asset_event_"

@@ -1,7 +1,7 @@
 package com.xxjz.ledger.core.common
 
-import com.xxjz.ledger.data.datastore.AppSettings
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals

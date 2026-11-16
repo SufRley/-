@@ -1,9 +1,9 @@
 package com.xxjz.ledger.feature.editor
 
 import app.cash.turbine.test
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.AppSettings
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.InstallmentScope
 import com.xxjz.ledger.domain.model.Tag

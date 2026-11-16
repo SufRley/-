@@ -18,7 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.xxjz.ledger.core.common.ShortcutAction
 import com.xxjz.ledger.core.common.StartDestination
 import com.xxjz.ledger.core.common.readOnboardingDone
-import com.xxjz.ledger.data.datastore.SettingsRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 
 /**
  * 应用根组件：主框架 + NavHost。

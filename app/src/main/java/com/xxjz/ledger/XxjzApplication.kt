@@ -1,13 +1,13 @@
 package com.xxjz.ledger
 
 import android.app.Application
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.seed.Seeder
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import com.xxjz.ledger.data.worker.DailyReminderWorker
 import com.xxjz.ledger.data.worker.RecurringWorker
 import com.xxjz.ledger.data.worker.TrashCleanupWorker
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.usecase.RunInstallmentUseCase
 import com.xxjz.ledger.domain.usecase.RunRecurringUseCase
 import com.xxjz.ledger.domain.usecase.TrashCleanupUseCase

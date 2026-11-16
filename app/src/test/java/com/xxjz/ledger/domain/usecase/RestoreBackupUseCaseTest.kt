@@ -1,16 +1,17 @@
 package com.xxjz.ledger.domain.usecase
 
 import com.xxjz.ledger.core.common.AppResult
-import com.xxjz.ledger.data.backup.BackupPayload
-import com.xxjz.ledger.data.backup.BudgetDto
-import com.xxjz.ledger.data.backup.TxnDto
 import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.entity.AccountEntity
 import com.xxjz.ledger.data.local.entity.CategoryEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
+import com.xxjz.ledger.data.repository.BackupRepositoryImpl
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
+import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.BudgetDto
+import com.xxjz.ledger.domain.model.TxnDto
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
@@ -27,13 +28,15 @@ import org.robolectric.RobolectricTestRunner
 class RestoreBackupUseCaseTest {
     private lateinit var db: AppDatabase
     private lateinit var settings: SettingsDataStore
+    private lateinit var repo: BackupRepositoryImpl
     private lateinit var useCase: RestoreBackupUseCase
 
     @Before
     fun setUp() {
         db = TestDatabaseFactory.create()
         settings = mockk(relaxed = true)
-        useCase = RestoreBackupUseCase(db, settings, DebtToAccountMigrator(db))
+        repo = BackupRepositoryImpl(db, DebtToAccountMigrator(db))
+        useCase = RestoreBackupUseCase(repo, settings)
     }
 
     @After
@@ -161,7 +164,7 @@ class RestoreBackupUseCaseTest {
     fun `写入阶段抛异常时整体回滚，旧数据一条不少（AC-73）`() =
         runTest {
             existingData()
-            useCase.faultInjector = { throw IllegalStateException("模拟写入失败") }
+            repo.faultInjector = { throw IllegalStateException("模拟写入失败") }
 
             val payload =
                 BackupPayload(

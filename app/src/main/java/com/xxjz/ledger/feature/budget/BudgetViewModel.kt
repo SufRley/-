@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.data.datastore.SettingsRepository
 import com.xxjz.ledger.domain.model.Budget
 import com.xxjz.ledger.domain.model.BudgetPeriod
 import com.xxjz.ledger.domain.model.BudgetScope
@@ -12,6 +11,7 @@ import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.BudgetRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
+import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
 import com.xxjz.ledger.domain.usecase.DeleteBudgetUseCase
 import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase

@@ -3,6 +3,7 @@ package com.xxjz.ledger.data.datastore
 import com.xxjz.ledger.core.common.PinHasher
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.KeypadType
 import com.xxjz.ledger.feature.settings.SettingsViewModel
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeSettingsDataStore

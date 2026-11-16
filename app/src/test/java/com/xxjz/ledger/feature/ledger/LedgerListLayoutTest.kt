@@ -238,7 +238,7 @@ class LedgerListLayoutTest {
     fun `超过七天没备份时首页出现可关闭的提示条`() {
         seed(3)
         settings.replaceAll(
-            com.xxjz.ledger.data.datastore.AppSettings(
+            com.xxjz.ledger.domain.model.AppSettings(
                 lastBackupAt = System.currentTimeMillis() - 12L * 24 * 60 * 60 * 1000,
             ),
         )

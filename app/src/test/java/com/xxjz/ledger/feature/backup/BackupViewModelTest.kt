@@ -1,13 +1,14 @@
 package com.xxjz.ledger.feature.backup
 
 import com.xxjz.ledger.data.backup.BackupCodec
-import com.xxjz.ledger.data.backup.BackupPayload
-import com.xxjz.ledger.data.backup.TxnDto
-import com.xxjz.ledger.data.datastore.AppSettings
 import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.data.repository.BackupRepositoryImpl
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
+import com.xxjz.ledger.domain.model.AppSettings
+import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.TxnDto
 import com.xxjz.ledger.domain.usecase.RestoreBackupUseCase
 import com.xxjz.ledger.testutil.FakeDocumentIo
 import io.mockk.coEvery
@@ -47,7 +48,8 @@ class RestoreViewModelTest {
     fun setUp() {
         db = TestDatabaseFactory.create()
         Dispatchers.setMain(UnconfinedTestDispatcher())
-        viewModel = RestoreViewModel(codec, io, RestoreBackupUseCase(db, mockk(relaxed = true), DebtToAccountMigrator(db)))
+        val repo = BackupRepositoryImpl(db, DebtToAccountMigrator(db))
+        viewModel = RestoreViewModel(codec, io, RestoreBackupUseCase(repo, mockk(relaxed = true)), repo)
         viewModel.ioDispatcher = UnconfinedTestDispatcher()
     }
 
