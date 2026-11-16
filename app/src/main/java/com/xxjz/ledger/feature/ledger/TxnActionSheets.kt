@@ -42,6 +42,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
+ * 抽屉里两个会变的文案（v1.9.5 第 9 条）。
+ *
+ * 打包成数据类而不是各自加参数：`TxnActionSheet` 已经顶到 detekt 的 12 参数上限，
+ * 再加两个布尔与字符串就要靠 suppress 过日子了。
+ */
+data class SheetLabels(
+    val reimburse: String = "报销",
+    val installment: String = "分期",
+    val showInstallment: Boolean = true,
+)
+
+/**
  * 长按流水弹出的动作面板（PRD v1.9.0 第 3 条）。
  *
  * 用户说「长按可编辑」，但长按同时还要出菜单，所以把「编辑」放在菜单第一项——
@@ -58,9 +70,9 @@ fun TxnActionSheet(
     onEdit: () -> Unit,
     onBatch: () -> Unit,
     onReimburse: () -> Unit,
-    reimburseLabel: String,
     onSplit: () -> Unit,
     onInstallment: () -> Unit,
+    labels: SheetLabels = SheetLabels(),
     onMore: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -74,9 +86,17 @@ fun TxnActionSheet(
             )
             ActionRow(Icons.Outlined.Edit, "编辑", "打开记账页修改这一笔", "action_edit", onEdit)
             ActionRow(Icons.Outlined.Checklist, "批量操作", "勾选多笔一起处理", "action_batch", onBatch)
-            ActionRow(Icons.Outlined.Receipt, reimburseLabel, "标记后可在「待报销」里跟进", "action_reimburse", onReimburse)
+            ActionRow(Icons.Outlined.Receipt, labels.reimburse, "标记后可在「待报销」里跟进", "action_reimburse", onReimburse)
             ActionRow(Icons.Outlined.CallSplit, "拆分", "拆成多笔独立账目", "action_split", onSplit)
-            ActionRow(Icons.Outlined.CalendarViewMonth, "分期", "查看该账户账单与分期计划", "action_installment", onInstallment)
+            if (labels.showInstallment) {
+                ActionRow(
+                    Icons.Outlined.CalendarViewMonth,
+                    labels.installment,
+                    "把这一笔按月分摊，每月自动出一期",
+                    "action_installment",
+                    onInstallment,
+                )
+            }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             ActionRow(Icons.Outlined.MoreHoriz, "更多操作", null, "action_more", onMore)
             // v1.9.4 第 4 条：删除收到抽屉里，放最底且用红色，离常用项最远、误触最少。

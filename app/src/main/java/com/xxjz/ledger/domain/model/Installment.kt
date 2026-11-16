@@ -28,7 +28,25 @@ data class Installment(
     /** 起始账期 yyyyMM。 */
     val startBillKey: Int,
     val createdAt: Long = 0,
+    /**
+     * 已执行期数（v1.9.5 第 9 条）。
+     *
+     * 用户可能已经在线下还过前几期，或者这笔是补录的老账。原流水记的是第 K+1 期，
+     * 之后每自动生成一期就 +1，因此它同时充当"进度游标"与"还剩几期"的唯一来源。
+     */
+    val paidPeriods: Int = 0,
+    /** 下一期待生成的时刻（毫秒）；0 表示已结清或不排期。 */
+    val nextRunAt: Long = 0,
 ) {
+    /** 当前已记到第几期（1 基）。 */
+    val currentPeriod: Int get() = (paidPeriods + 1).coerceAtMost(periods)
+
+    /** 还剩几期要自动生成。 */
+    val remainingPeriods: Int get() = (periods - paidPeriods - 1).coerceAtLeast(0)
+
+    /** 是否已结清。 */
+    val settled: Boolean get() = paidPeriods >= periods
+
     val totalCents: Long get() = principalCents + feeCents
 
     /** 每期计划（第 1 期下标为 0）。 */

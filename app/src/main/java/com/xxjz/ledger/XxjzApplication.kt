@@ -8,6 +8,7 @@ import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import com.xxjz.ledger.data.worker.DailyReminderWorker
 import com.xxjz.ledger.data.worker.RecurringWorker
 import com.xxjz.ledger.data.worker.TrashCleanupWorker
+import com.xxjz.ledger.domain.usecase.RunInstallmentUseCase
 import com.xxjz.ledger.domain.usecase.RunRecurringUseCase
 import com.xxjz.ledger.domain.usecase.TrashCleanupUseCase
 import dagger.hilt.android.HiltAndroidApp
@@ -25,6 +26,9 @@ class XxjzApplication : Application() {
 
     @Inject
     lateinit var runRecurring: RunRecurringUseCase
+
+    @Inject
+    lateinit var runInstallment: RunInstallmentUseCase
 
     @Inject
     lateinit var trashCleanup: TrashCleanupUseCase
@@ -49,6 +53,8 @@ class XxjzApplication : Application() {
         }
         // 启动补执行 + 每日后台任务双保险（AC-52 / AC-58）。引擎幂等，重复触发不会重复记账。
         scope.launch { runCatching { runRecurring() } }
+        // 分期每月出账（v1.9.5 第 9 条）：与周期记账同款幂等引擎，启动与每日后台各补一次
+        scope.launch { runCatching { runInstallment() } }
         runCatching { RecurringWorker.schedule(this) }
         // 回收站到期清理（AC-76）：启动时清一次 + 每日后台兜底；保留天数为「永久」时内部直接跳过
         scope.launch { runCatching { trashCleanup() } }

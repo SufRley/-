@@ -4,9 +4,11 @@ import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase
+import com.xxjz.ledger.domain.usecase.StartInstallmentUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
+import com.xxjz.ledger.testutil.FakeInstallmentRepository
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -51,6 +53,9 @@ class LedgerViewModelTest {
             templateRepository = templateRepo,
             budgetForMonth = GetBudgetForMonthUseCase(FakeBudgetRepository()),
             accountRepository = FakeAccountRepository(),
+            installmentRepository = FakeInstallmentRepository(),
+            startInstallmentUseCase =
+                StartInstallmentUseCase(txnRepo, FakeAccountRepository(), FakeInstallmentRepository()),
         )
 
     private fun txn(id: String) =

@@ -6,6 +6,7 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.xxjz.ledger.domain.usecase.RunInstallmentUseCase
 import com.xxjz.ledger.domain.usecase.RunRecurringUseCase
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -18,6 +19,8 @@ import java.util.concurrent.TimeUnit
 @InstallIn(SingletonComponent::class)
 interface RecurringWorkerEntryPoint {
     fun runRecurring(): RunRecurringUseCase
+
+    fun runInstallment(): RunInstallmentUseCase
 }
 
 /**
@@ -31,11 +34,13 @@ class RecurringWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        val useCase =
-            EntryPointAccessors
-                .fromApplication(applicationContext, RecurringWorkerEntryPoint::class.java)
-                .runRecurring()
-        return runCatching { useCase() }.fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
+        val entry = EntryPointAccessors.fromApplication(applicationContext, RecurringWorkerEntryPoint::class.java)
+        // 两件事一起做：周期规则补记 + 分期补出账（v1.9.5 第 9 条）。
+        // 各自幂等，任一失败只影响自己，整轮仍按失败重试。
+        return runCatching {
+            entry.runRecurring()()
+            entry.runInstallment()()
+        }.fold(onSuccess = { Result.success() }, onFailure = { Result.retry() })
     }
 
     companion object {

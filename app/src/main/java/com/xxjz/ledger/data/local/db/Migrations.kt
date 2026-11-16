@@ -178,6 +178,20 @@ val MIGRATION_7_8: Migration =
         }
     }
 
+/**
+ * v8 → v9（v1.9.5 第 9 条）：分期加「已执行期数」与「下次生成时刻」。
+ *
+ * 这两列让分期从"只读的计划"变成"会自动出账的排期"：
+ * `paidPeriods` 既是进度也是剩余期数的唯一来源，`nextRunAt` 给幂等引擎一个游标。
+ */
+val MIGRATION_8_9: Migration =
+    object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            addColumnIfMissing(db, "installment", "paidPeriods", "INTEGER NOT NULL DEFAULT 0")
+            addColumnIfMissing(db, "installment", "nextRunAt", "INTEGER NOT NULL DEFAULT 0")
+        }
+    }
+
 /** 全部迁移，供 [AppDatabase] 构建时注册。 */
 val ALL_MIGRATIONS: Array<Migration> =
     arrayOf(
@@ -188,4 +202,5 @@ val ALL_MIGRATIONS: Array<Migration> =
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )

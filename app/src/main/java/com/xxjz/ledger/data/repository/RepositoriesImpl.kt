@@ -901,6 +901,8 @@ internal fun InstallmentEntity.toModel(): Installment =
         periods = periods,
         startBillKey = startBillKey,
         createdAt = createdAt,
+        paidPeriods = paidPeriods,
+        nextRunAt = nextRunAt,
     )
 
 internal fun Installment.toEntity(): InstallmentEntity =
@@ -915,4 +917,6 @@ internal fun Installment.toEntity(): InstallmentEntity =
         periods = periods,
         startBillKey = startBillKey,
         createdAt = createdAt,
+        paidPeriods = paidPeriods,
+        nextRunAt = nextRunAt,
     )

@@ -1,11 +1,13 @@
 package com.xxjz.ledger.feature.ledger
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.xxjz.ledger.core.common.MoneyFormatter
+import com.xxjz.ledger.domain.model.Installment
 
 /**
  * 长按菜单的宿主（PRD v1.9.0 第 3 条）。
@@ -31,6 +33,14 @@ fun TxnMenuHost(
     if (target == null) return
     val txn = target.txn
     var showMore by remember(target) { mutableStateOf(false) }
+    var showInstallment by remember(target) { mutableStateOf(false) }
+    var existingInstallment by remember(target) { mutableStateOf<Installment?>(null) }
+    var installmentAllowed by remember(target) { mutableStateOf(true) }
+    // 查两件事：能不能分期（只有信用支出）、有没有分过（有则切只读，避免重复建计划）
+    LaunchedEffect(target) {
+        installmentAllowed = viewModel.canInstallment(txn)
+        existingInstallment = viewModel.installmentOf(txn.id)
+    }
     val amountText = MoneyFormatter.centsToYuan(txn.amount)
 
     // 一级面板始终留在下面：二级弹窗关掉后还能接着选别的
@@ -49,22 +59,41 @@ fun TxnMenuHost(
             viewModel.toggleReimbursement(txn)
             onDismiss()
         },
-        reimburseLabel = if (txn.pendingReimbursement) "取消待报销" else "报销",
+        labels =
+            SheetLabels(
+                reimburse = if (txn.pendingReimbursement) "取消待报销" else "报销",
+                installment = if (existingInstallment == null) "分期" else "查看分期",
+                showInstallment = installmentAllowed,
+            ),
         onSplit = {
             onOpenSplit(txn.id)
             onDismiss()
         },
-        onInstallment = {
-            // accountId 理论上有值；万一为空就别跳，免得进到一个空账户页
-            txn.accountId?.let(onOpenAccount)
-            onDismiss()
-        },
+        // 分期就地弹层，作用在本笔交易上（v1.9.5 第 9 条）。
+        // 以前这里直接把用户带到付款账户的详情页，等于问「这笔怎么还」却答了「这张卡欠多少」。
+        onInstallment = { showInstallment = true },
         onMore = { showMore = true },
         onDelete = {
             onDelete(target)
             onDismiss()
         },
     )
+
+    if (showInstallment) {
+        InstallmentSetupDialog(
+            amountCents = txn.amount,
+            existing = existingInstallment,
+            onDismiss = {
+                showInstallment = false
+                onDismiss()
+            },
+            onConfirm = { periods, paid ->
+                viewModel.startInstallment(txn, periods, paid)
+                showInstallment = false
+                onDismiss()
+            },
+        )
+    }
 
     if (showMore) {
         MoreActionsDialog(

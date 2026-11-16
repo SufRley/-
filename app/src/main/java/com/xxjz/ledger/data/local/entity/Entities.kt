@@ -231,4 +231,8 @@ data class InstallmentEntity(
     /** 起始账期 yyyyMM。 */
     @ColumnInfo(name = "startBillKey") val startBillKey: Int,
     @ColumnInfo(name = "createdAt") val createdAt: Long,
+    /** 已执行期数（v1.9.5 第 9 条）：用户可填已经还过的期数。 */
+    @ColumnInfo(name = "paidPeriods", defaultValue = "0") val paidPeriods: Int = 0,
+    /** 下一期待生成时刻，0 表示不排期。 */
+    @ColumnInfo(name = "nextRunAt", defaultValue = "0") val nextRunAt: Long = 0,
 )

@@ -35,7 +35,7 @@ import com.xxjz.ledger.data.local.entity.TxnTagEntity
  *
  * 版本演进（见 [ALL_MIGRATIONS]）：v2 预算表、v3 借贷坏账、v4 账户软删、
  * v5 账户五分类与投资字段、v6 借贷账户化（负债/备注/还款日、借贷动作、分期关联）、
- * v7 分期计划表。
+ * v7 分期计划表、v9 分期已执行期数与下次生成时刻。
  *
  * - `exportSchema = true`：schema 快照随仓库走（`app/schemas`），便于后续迁移评审。
  * - WAL：在 `DatabaseModule` 建库时通过 `JournalMode.WRITE_AHEAD_LOGGING` 开启。
@@ -89,7 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         /** 当前 schema 版本；备份与导入的兼容性判断都读这里。 */
-        const val SCHEMA_VERSION = 8
+        const val SCHEMA_VERSION = 9
 
         const val NAME = "xxjz.db"
         const val SEED_VERSION = 1

@@ -2,15 +2,20 @@ package com.xxjz.ledger.feature.ledger
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.xxjz.ledger.core.common.AppResult
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.data.local.seed.SeedData
+import com.xxjz.ledger.domain.model.AccountType
+import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
+import com.xxjz.ledger.domain.repository.InstallmentRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
+import com.xxjz.ledger.domain.usecase.StartInstallmentUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -20,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -60,6 +66,8 @@ class LedgerViewModel
         private val templateRepository: TemplateRepository,
         private val budgetForMonth: com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase,
         private val accountRepository: AccountRepository,
+        private val installmentRepository: InstallmentRepository,
+        private val startInstallmentUseCase: StartInstallmentUseCase,
     ) : ViewModel() {
         private val month = MutableStateFlow(YearMonth.now())
 
@@ -152,6 +160,36 @@ class LedgerViewModel
                     txn.copy(pendingReimbursement = next, updatedAt = System.currentTimeMillis()),
                 )
                 _messages.emit(if (next) "已标记为待报销" else "已取消待报销")
+            }
+        }
+
+        // ---------- 分期（v1.9.5 第 9 条） ----------
+
+        /** 只有「支出 + 信用账户」才给分期入口，其余类型连菜单项都不出现。 */
+        suspend fun canInstallment(txn: Txn): Boolean =
+            txn.type == TxnType.EXPENSE &&
+                txn.accountId?.let { accountRepository.byId(it)?.type } == AccountType.CREDIT
+
+        /** 这笔交易是否已有分期计划；有的话弹层切只读。 */
+        suspend fun installmentOf(txnId: String): Installment? =
+            installmentRepository.observeAll().first().firstOrNull { it.txnId == txnId }
+
+        /**
+         * 对**本笔**发起分期。
+         *
+         * 用例会把原流水改成「本期应还」，剩下的期数交给每月自动出账引擎；
+         * 以后回列表就能看到金额变小、每月多出一笔。
+         */
+        fun startInstallment(
+            txn: Txn,
+            periods: Int,
+            paidPeriods: Int,
+        ) {
+            viewModelScope.launch {
+                when (val result = startInstallmentUseCase(txn.id, periods, paidPeriods)) {
+                    is AppResult.Success -> _messages.emit("已分 $periods 期，每月自动出账")
+                    is AppResult.Failure -> _messages.emit(result.error.message)
+                }
             }
         }
 
