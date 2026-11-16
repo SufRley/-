@@ -187,4 +187,21 @@ class LedgerGrouperTest {
         assertEquals("", row.accountName)
         assertEquals("12:00", row.timeLabel, "时间不依赖账户表")
     }
+
+    @Test
+    fun `行内日期补零到 MM-dd`() {
+        val t = txn("a", TxnType.EXPENSE, 1000, LocalDate.of(2026, 3, 7))
+        val row = LedgerGrouper.group(listOf(t), categories, today).first().rows.first()
+
+        assertEquals("03-07", row.dateLabel, "个位数月份与日期都要补零，否则一列日期长短不齐")
+    }
+
+    @Test
+    fun `日期与时间取自交易本身，不取当天`() {
+        val t = txn("a", TxnType.EXPENSE, 1000, LocalDate.of(2026, 11, 1))
+        val row = LedgerGrouper.group(listOf(t), categories, LocalDate.of(2026, 11, 16)).first().rows.first()
+
+        assertEquals("11-01", row.dateLabel)
+        assertEquals("12:00", row.timeLabel)
+    }
 }

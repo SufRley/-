@@ -7,6 +7,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -254,5 +255,94 @@ class LedgerListLayoutTest {
         compose.waitForIdle()
 
         compose.onAllNodesWithTag("home_backup_hint").assertCountEquals(0)
+    }
+
+    // ---------- 最近四笔 + 更多明细（v1.9.6 第 2 条） ----------
+
+    /** 每天记一笔，用来验证「跨天也连着排」。 */
+    private fun seedDays(count: Int) {
+        repeat(count) { index ->
+            val date = today.minusDays(index.toLong())
+            val millis = date.atTime(12, 0).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            txnRepo.items["d$index"] =
+                Txn(
+                    id = "d$index",
+                    type = TxnType.EXPENSE,
+                    amount = 1000L + index,
+                    categoryId = "food",
+                    accountId = "acc",
+                    dateTime = millis,
+                    dateKey = date.year * 10000 + date.monthValue * 100 + date.dayOfMonth,
+                    note = "跨天$index",
+                    createdAt = millis,
+                    updatedAt = millis,
+                )
+        }
+    }
+
+    @Test
+    fun `三十笔时首页只显示最近四笔`() {
+        seed(30)
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        // 打开就在顶部：最新一笔必须第一眼可见，不需要用户先往上滚
+        compose.onNodeWithTag("txn_item_t0").assertExists()
+        compose.onNodeWithTag("txn_item_t3").assertExists()
+        compose.onAllNodesWithTag("txn_item_t4").assertCountEquals(0)
+    }
+
+    @Test
+    fun `四笔以内不出更多明细卡`() {
+        seed(3)
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onAllNodesWithTag("more_txns").assertCountEquals(0)
+        compose.onNodeWithTag("txn_item_t2").assertExists()
+    }
+
+    @Test
+    fun `超过四笔时出更多明细卡并写总笔数`() {
+        seed(12)
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("more_txns").assertExists()
+        compose.onNodeWithText("共 12 笔").assertExists()
+    }
+
+    @Test
+    fun `最近四笔跨天也连着排且不插日期头`() {
+        seedDays(3)
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        // 三条来自三天，但首页不分组：不该出现「今天 / 昨天」这类日期头
+        compose.onAllNodesWithText("今天").assertCountEquals(0)
+        // 每笔自带日期
+        compose.onNodeWithText("11-16 12:00", substring = true).assertExists()
+        compose.onNodeWithText("11-15 12:00", substring = true).assertExists()
+    }
+
+    @Test
+    fun `更多明细卡在预算卡上面`() {
+        seed(12)
+        val vm = viewModel()
+        compose.setContent { XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) } }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        val more = compose.onNodeWithTag("more_txns").getBoundsInRoot()
+        val budget = compose.onNodeWithTag("budget_card").getBoundsInRoot()
+        assertTrue("更多明细卡应在预算卡上方", more.top < budget.top)
     }
 }

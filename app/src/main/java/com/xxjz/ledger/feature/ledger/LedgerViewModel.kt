@@ -56,9 +56,25 @@ data class LedgerUiState(
     val balance: Long get() = income - expense
     val count: Int get() = groups.sumOf { it.rows.size }
 
+    /**
+     * 首页只显示最近几笔（v1.9.6 第 2 条）。
+     *
+     * 以前整月全量铺开，一个月几十笔时「这个月大概什么样」被淹没在长列表里，
+     * 而且要滚很久才够得到预算卡。现在首页当概览用，完整清单交给「更多明细」。
+     */
+    val recentRows: List<TxnRow> get() = groups.asSequence().flatMap { it.rows }.take(RECENT_LIMIT).toList()
+
+    /** 是否还有没显示出来的流水（决定要不要出「更多明细」卡）。 */
+    val hasMore: Boolean get() = count > RECENT_LIMIT
+
     /** 本月已过天数与日均支出（用于小结条）。 */
     val elapsedDays: Int get() = DateUtils.elapsedDaysInMonth()
     val dailyAverage: Long get() = if (elapsedDays <= 0) 0 else expense / elapsedDays
+
+    companion object {
+        /** 首页显示的流水条数上限。 */
+        const val RECENT_LIMIT = 4
+    }
 }
 
 /** 明细首页 ViewModel：按月订阅流水 + 分类，组装分组与月小计（AC-26）。 */

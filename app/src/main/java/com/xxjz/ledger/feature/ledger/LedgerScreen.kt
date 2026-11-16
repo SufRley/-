@@ -1,6 +1,7 @@
 package com.xxjz.ledger.feature.ledger
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,6 +89,8 @@ data class LedgerNav(
     val onOpenSplit: (String) -> Unit = {},
     /** 备份提示条上的「去备份」（v1.9.6 第 1 条）。 */
     val onOpenBackup: () -> Unit = {},
+    /** 首页「更多明细」卡进全部明细页（v1.9.6 第 2 条）。 */
+    val onOpenAllTxns: () -> Unit = {},
 )
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
@@ -107,6 +110,7 @@ fun LedgerScreen(
     val onOpenReimbursement = nav.onOpenReimbursement
     val onOpenSplit = nav.onOpenSplit
     val onOpenBackup = nav.onOpenBackup
+    val onOpenAllTxns = nav.onOpenAllTxns
     val onOpenBudget = nav.onOpenBudget
     val onMenu = nav.onMenu
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -176,6 +180,14 @@ fun LedgerScreen(
                     modifier = Modifier.weight(1f),
                 )
                 BudgetOverviewCard(budget = state.budget, onOpen = onOpenBudget)
+            } else if (state.loading) {
+                // 首次加载还没数据，先占位、不渲染列表。
+                //
+                // 若此时就渲染 LazyColumn，里面只有「预算卡」一项且带 key；数据到达后
+                // 流水被插到它前面，LazyColumn 会以 key 为准保持预算卡的视口位置，
+                // 于是整列被顶下去——表现就是「一打开首页就停在最底部那几条」。
+                // v1.9.5 里这条与 fillMaxSize 的 bug 叠在一起，看起来更像「只显示四五条」。
+                Box(Modifier.weight(1f).fillMaxWidth())
             } else {
                 // 必须用 weight 而不是 fillMaxSize：Column 里未加权的子项拿的是父级最大高度，
                 // 不是「剩下多少」。写 fillMaxSize 会让列表比可用空间高出一截，
@@ -184,31 +196,37 @@ fun LedgerScreen(
                     modifier = Modifier.weight(1f).fillMaxWidth().testTag("txn_list"),
                     contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
-                    state.groups.forEach { group ->
-                        item(key = "head_${group.dateKey}") { DayHeader(group) }
-                        val lastId = group.rows.lastOrNull()?.txn?.id
-                        items(group.rows, key = { it.txn.id }) { row ->
-                            TxnItem(
-                                row = row,
-                                selecting = selecting,
-                                selected = row.txn.id in selectedIds,
-                                onClick = {
-                                    if (selecting) {
-                                        selectedIds = selectedIds.toggle(row.txn.id)
-                                    } else {
-                                        onOpen(row.txn.id)
-                                    }
-                                },
-                                onLongClick = { if (!selecting) menuRow = row },
+                    // 最近 4 笔平铺（v1.9.6 第 2 条）：不再按天分组、不插日期头，
+                    // 日期进每条自己的次行，跨天也连着排。完整清单在「更多明细」页。
+                    val recent = state.recentRows
+                    val lastId = recent.lastOrNull()?.txn?.id
+                    items(recent, key = { it.txn.id }) { row ->
+                        TxnItem(
+                            row = row,
+                            selecting = selecting,
+                            selected = row.txn.id in selectedIds,
+                            onClick = {
+                                if (selecting) {
+                                    selectedIds = selectedIds.toggle(row.txn.id)
+                                } else {
+                                    onOpen(row.txn.id)
+                                }
+                            },
+                            onLongClick = { if (!selecting) menuRow = row },
+                            showDate = true,
+                        )
+                        // 分隔线内缩、不通栏：通栏会把页面切成一条条，内缩才是「条目之间有界限」
+                        if (row.txn.id != lastId) {
+                            HorizontalDivider(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                thickness = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant,
                             )
-                            // 分隔线内缩、不通栏：通栏会把页面切成一条条，内缩才是「条目之间有界限」
-                            if (row.txn.id != lastId) {
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    thickness = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant,
-                                )
-                            }
+                        }
+                    }
+                    if (state.hasMore) {
+                        item(key = "more_txns") {
+                            MoreTxnCard(count = state.count, onClick = onOpenAllTxns)
                         }
                     }
                     // 预算概览卡固定在列表最下层（v1.8.0 / PRD F4、D7）
@@ -377,6 +395,52 @@ private fun BackupHintBar(
     }
 }
 
+/**
+ * 「更多明细」卡片（v1.9.6 第 2 条）。
+ *
+ * 首页只放最近四笔，剩下的靠这张卡进完整清单。卡上写「共 N 笔」而不是「查看全部」：
+ * 数字能让人自己判断值不值得点进去，只写「查看全部」则必须点一次才能打消疑虑。
+ */
+@Composable
+private fun MoreTxnCard(
+    count: Int,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag("more_txns"),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "更多明细",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "共 $count 笔",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp).size(18.dp),
+            )
+        }
+    }
+}
+
 /** 小结条：已过天数与日均支出，3 秒后自动消失（M4-T3）。 */
 @Composable
 private fun SummaryHint(
@@ -525,8 +589,9 @@ private fun SummaryCell(
     }
 }
 
+/** 日期头：今天 / 昨天 / 11月13日 周四 + 日小计（「更多明细」页复用）。 */
 @Composable
-private fun DayHeader(group: DayGroup) {
+internal fun DayHeader(group: DayGroup) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -559,16 +624,19 @@ private fun DayHeader(group: DayGroup) {
 }
 
 /**
- * 一条流水（PRD v1.9.0 第 3 条，v1.9.5 第 4 条重排行内信息）。
+ * 一条流水（PRD v1.9.0 第 3 条，v1.9.5 第 4 条重排行内信息，v1.9.6 第 2 条日期进卡）。
  *
  * 两种交互：轻点打开详情、长按弹动作面板。删除统一走长按抽屉最底部的红色项。
  *
  * 行内分四个固定位置，扫视时不必逐字读：
  * ```
  * [图标] 餐饮 · 午饭              ¥38.00
- *        12:30                        招行储蓄卡
+ *        11-16 12:30                  招行储蓄卡
  * ```
  * 以前分类名、备注、金额挤在一条基线上，一眼抓不到「花了多少、从哪张卡出的」。
+ *
+ * [showDate] 只在首页为 true：首页不再有日期头，日期必须进卡；
+ * 「更多明细」页仍按天分组，日期已在组头，行内再写一遍是重复。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -578,6 +646,7 @@ private fun TxnItem(
     selected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
+    showDate: Boolean = false,
 ) {
     val txn = row.txn
     Row(
@@ -643,7 +712,7 @@ private fun TxnItem(
             Spacer(Modifier.height(3.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = row.timeLabel,
+                    text = if (showDate) "${row.dateLabel} ${row.timeLabel}" else row.timeLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

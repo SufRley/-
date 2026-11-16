@@ -18,6 +18,8 @@ data class TxnRow(
     val toAccountName: String? = null,
     /** 发生时刻，`HH:mm`（流水要能看出这一天什么时候花的）。 */
     val timeLabel: String = "",
+    /** 发生日期，`MM-dd`（v1.9.6 第 2 条：首页不再有日期头，日期要进卡）。 */
+    val dateLabel: String = "",
 )
 
 /** 按天分组的流水。 */
@@ -64,6 +66,7 @@ object LedgerGrouper {
                                 toAccountName =
                                     if (txn.type == TxnType.TRANSFER) txn.toAccountId?.let { accounts[it]?.name } else null,
                                 timeLabel = timeLabelOf(txn.dateTime),
+                                dateLabel = dateLabelOf(txn.dateTime),
                             )
                         }
                 val counted = list.filter { !it.excludedFromStats }
@@ -85,10 +88,20 @@ object LedgerGrouper {
             else -> "未分类"
         }
 
-    /** 行内的时间文案，固定 `HH:mm`：首页按天分组，年月日是重复信息。 */
+    /** 行内的时间文案，固定 `HH:mm`：列表按天分组时，年月日是重复信息。 */
     fun timeLabelOf(millis: Long): String {
         val dt = DateUtils.toDateTime(millis)
         return "%02d:%02d".format(dt.hour, dt.minute)
+    }
+
+    /**
+     * 行内的日期文案，固定 `MM-dd`（v1.9.6 第 2 条）。
+     *
+     * 不写年份：首页只看当月，写年份是噪音；跨年月的场景由「更多明细」页的日期头兜底。
+     */
+    fun dateLabelOf(millis: Long): String {
+        val dt = DateUtils.toDateTime(millis)
+        return "%02d-%02d".format(dt.monthValue, dt.dayOfMonth)
     }
 
     fun weekdayOf(date: LocalDate): String =
