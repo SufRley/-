@@ -403,28 +403,19 @@ private fun AccountRow(
                     )
                 }
             }
+            // 借贷标符号含义、信用标可用额度（v1.9.6 第 4 条）
             Text(
-                // 借贷账户直接标出符号含义：正数待收、负数待还、零已结清（v1.9.0 净值模型）
-                text =
-                    if (account.type == AccountType.DEBT) {
-                        when {
-                            account.balance > 0 -> "借贷 · 待收"
-                            account.balance < 0 -> "借贷 · 待还"
-                            else -> "借贷 · 已结清"
-                        }
-                    } else {
-                        typeLabel(account.type)
-                    },
+                text = AccountDisplay.subtitle(account),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Text(
-            text = "¥${MoneyFormatter.centsToYuan(account.balance)}",
+            text = AccountDisplay.amountText(account),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = FontWeight.Medium,
             color =
-                if (account.type == AccountType.DEBT && account.balance < 0) {
+                if (AccountDisplay.isNegative(account)) {
                     MaterialTheme.colorScheme.error
                 } else {
                     MaterialTheme.colorScheme.onSurface
@@ -460,15 +451,6 @@ private fun AccountRow(
         }
     }
 }
-
-private fun typeLabel(type: AccountType): String =
-    when (type) {
-        AccountType.CASH -> "现金"
-        AccountType.SAVINGS -> "储蓄卡"
-        AccountType.CREDIT -> "信用"
-        AccountType.DEBT -> "借贷"
-        AccountType.INVEST -> "投资"
-    }
 
 /** P15 账户编辑：按类型驱动表单，信用类才显示额度与账单/还款日（AC-17）。 */
 @OptIn(ExperimentalLayoutApi::class)
@@ -517,7 +499,7 @@ private fun AccountEditDialog(
                         FilterChip(
                             selected = type == item,
                             onClick = { type = item },
-                            label = { Text(typeLabel(item)) },
+                            label = { Text(AccountDisplay.typeLabel(item)) },
                         )
                     }
                 }
