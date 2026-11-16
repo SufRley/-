@@ -25,12 +25,12 @@ fun TxnMenuHost(
     onEditTxn: (String) -> Unit,
     onStartBatch: (TxnRow) -> Unit,
     onDelete: (TxnRow) -> Unit,
+    onOpenSplit: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     if (target == null) return
     val txn = target.txn
     var showMore by remember(target) { mutableStateOf(false) }
-    var showSplit by remember(target) { mutableStateOf(false) }
     val amountText = MoneyFormatter.centsToYuan(txn.amount)
 
     // 一级面板始终留在下面：二级弹窗关掉后还能接着选别的
@@ -50,7 +50,10 @@ fun TxnMenuHost(
             onDismiss()
         },
         reimburseLabel = if (txn.pendingReimbursement) "取消待报销" else "报销",
-        onSplit = { showSplit = true },
+        onSplit = {
+            onOpenSplit(txn.id)
+            onDismiss()
+        },
         onInstallment = {
             // accountId 理论上有值；万一为空就别跳，免得进到一个空账户页
             txn.accountId?.let(onOpenAccount)
@@ -74,18 +77,6 @@ fun TxnMenuHost(
             onCreateTemplate = {
                 viewModel.saveAsTemplate(txn, target.categoryName)
                 showMore = false
-                onDismiss()
-            },
-        )
-    }
-
-    if (showSplit) {
-        SplitDialog(
-            amountText = amountText,
-            onDismiss = { showSplit = false },
-            onConfirm = { parts ->
-                viewModel.splitTxn(txn, parts)
-                showSplit = false
                 onDismiss()
             },
         )

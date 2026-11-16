@@ -30,6 +30,7 @@ import com.xxjz.ledger.feature.report.ReportScreen
 import com.xxjz.ledger.feature.report.YearSummaryScreen
 import com.xxjz.ledger.feature.search.SearchScreen
 import com.xxjz.ledger.feature.settings.SettingsScreen
+import com.xxjz.ledger.feature.split.SplitTxnScreen
 import com.xxjz.ledger.feature.template.TemplateListScreen
 import com.xxjz.ledger.feature.trash.TrashScreen
 
@@ -90,6 +91,7 @@ internal fun NavGraphBuilder.appNavGraph(
                     onEditTxn = { id -> navController.navigate(Routes.editor(txnId = id)) },
                     onOpenAccount = { id -> navController.navigate(Routes.accountDetail(id)) },
                     onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+                    onOpenSplit = { id -> navController.navigate(Routes.split(id)) },
                     onUseTemplate = { id -> navController.navigate(Routes.editor(templateId = id)) },
                     onOpenSearch = { navController.navigate(Routes.SEARCH) },
                     onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
@@ -108,6 +110,7 @@ internal fun NavGraphBuilder.appNavGraph(
             onEdit = { id -> navController.navigate(Routes.editor(txnId = id)) },
         )
     }
+    splitRoute(navController)
     composable(Routes.TEMPLATES) {
         TemplateListScreen(
             onBack = { navController.popBackStack() },
@@ -237,6 +240,25 @@ internal fun NavGraphBuilder.appNavGraph(
             onOpenTrash = { navController.navigate(Routes.TRASH) },
             onOpenManage = { navController.navigate(Routes.MANAGE) },
             onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+        )
+    }
+}
+
+/**
+ * 拆分明细页单独注册（v1.9.5 第 8 条）。
+ *
+ * 从 [appNavGraph] 里拎出来纯粹是为了压住 detekt 的 `LongMethod`：
+ * 那个函数已经两百行，每加一个页面的注册都要重新数一遍行数。
+ */
+private fun NavGraphBuilder.splitRoute(navController: NavHostController) {
+    composable(
+        route = Routes.SPLIT,
+        arguments = listOf(navArgument(Routes.ARG_TXN_ID) { type = NavType.StringType }),
+    ) {
+        SplitTxnScreen(
+            onBack = { navController.popBackStack() },
+            // 拆完回明细页：用户接下来要看的就是那几笔新账有没有对上
+            onDone = { navController.popBackStack() },
         )
     }
 }

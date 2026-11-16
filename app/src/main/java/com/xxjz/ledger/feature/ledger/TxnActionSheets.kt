@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BookmarkAdd
 import androidx.compose.material.icons.outlined.CalendarViewMonth
@@ -28,14 +27,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
 /**
@@ -111,64 +106,6 @@ fun MoreActionsDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
         modifier = Modifier.testTag("more_actions_dialog"),
     )
-}
-
-/** 拆分：问份数，等额均分。 */
-@Composable
-fun SplitDialog(
-    amountText: String,
-    onDismiss: () -> Unit,
-    onConfirm: (Int) -> Unit,
-) {
-    var text by remember { mutableStateOf("2") }
-    val parts = text.toIntOrNull() ?: 0
-    val valid = parts in 2..20
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("拆成多笔") },
-        text = {
-            Column {
-                Text(
-                    text = "原账目 ¥$amountText 会移入回收站，换成 N 笔等额账目。",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(10.dp))
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it.filter(Char::isDigit).take(2) },
-                    label = { Text("拆成几笔（2~20）") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth().testTag("split_parts"),
-                )
-                if (parts >= 2) {
-                    Text(
-                        text = "每笔约 ¥${splitPerPart(amountText, parts)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(parts) }, enabled = valid, modifier = Modifier.testTag("split_confirm")) {
-                Text("拆分")
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
-}
-
-/** 单笔金额预览：按分为单位算，避免浮点误差。 */
-private fun splitPerPart(
-    amountText: String,
-    parts: Int,
-): String {
-    val cents = com.xxjz.ledger.core.common.MoneyFormatter.yuanToCents(amountText) ?: 0L
-    if (parts <= 0) return amountText
-    return com.xxjz.ledger.core.common.MoneyFormatter.centsToYuan(cents / parts)
 }
 
 /** 批量模式的操作栏：贴在底部，显示已选数量与可用动作。 */

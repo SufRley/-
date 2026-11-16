@@ -70,6 +70,11 @@ object Routes {
     /** 待报销 P26。 */
     const val REIMBURSEMENT = "reimbursement"
 
+    /** 拆分明细 P27（v1.9.5 第 8 条）：一笔账拆成多个账户各自出多少。 */
+    const val SPLIT = "split/{txnId}"
+
+    fun split(txnId: String): String = "split/$txnId"
+
     // 借贷台账（v1.9.0 起取消）：借贷改为「一人一账户」，直接从账户列表进入详情，
     // 不再有独立的台账页与详情页（PRD 2.5）。
 

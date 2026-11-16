@@ -155,40 +155,6 @@ class LedgerViewModel
             }
         }
 
-        /**
-         * 长按菜单「拆分」：拆成 [parts] 笔独立账目（PRD v1.9.0 第 3 条）。
-         *
-         * 等额均分，除不尽的分落到最后一笔——比「第一笔吃掉余数」更符合直觉，
-         * 因为差额通常来自分币四舍五入，放在末尾不显眼。
-         * 原账目随后进回收站，否则金额会凭空翻倍。
-         */
-        fun splitTxn(
-            txn: Txn,
-            parts: Int,
-        ) {
-            if (parts < 2) return
-            viewModelScope.launch {
-                val now = System.currentTimeMillis()
-                val each = txn.amount / parts
-                val remainder = txn.amount - each * parts
-                repeat(parts) { index ->
-                    val amount = each + if (index == parts - 1) remainder else 0L
-                    if (amount <= 0L) return@repeat
-                    txnRepository.insert(
-                        txn.copy(
-                            id = SeedData.newId("txn"),
-                            amount = amount,
-                            note = "${txn.note}（拆分 ${index + 1}/$parts）".take(200),
-                            createdAt = now,
-                            updatedAt = now,
-                        ),
-                    )
-                }
-                txnRepository.softDelete(txn.id, now)
-                _messages.emit("已拆成 $parts 笔")
-            }
-        }
-
         /** 长按菜单「更多 → 创建模板记账」：把当前这笔存成模板，下次一键复用。 */
         fun saveAsTemplate(
             txn: Txn,

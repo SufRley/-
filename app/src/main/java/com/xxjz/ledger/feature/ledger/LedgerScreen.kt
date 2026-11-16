@@ -81,6 +81,8 @@ data class LedgerNav(
     val onOpenBudget: () -> Unit = {},
     val onMenu: () -> Unit = {},
     val onOpenReimbursement: () -> Unit = {},
+    /** 拆分进独立页面（v1.9.5 第 8 条）。 */
+    val onOpenSplit: (String) -> Unit = {},
 )
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
@@ -98,6 +100,7 @@ fun LedgerScreen(
     val onOpenSearch = nav.onOpenSearch
     val onOpenCalendar = nav.onOpenCalendar
     val onOpenReimbursement = nav.onOpenReimbursement
+    val onOpenSplit = nav.onOpenSplit
     val onOpenBudget = nav.onOpenBudget
     val onMenu = nav.onMenu
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -236,6 +239,7 @@ fun LedgerScreen(
                 viewModel.delete(row.txn.id)
                 menuRow = null
             },
+            onOpenSplit = onOpenSplit,
             onDismiss = { menuRow = null },
         )
         // 悬浮「＋」只在明细页出现（PRD D9）；批量模式下藏起来，免得挡住操作栏
