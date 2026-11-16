@@ -1,16 +1,23 @@
 package com.xxjz.ledger.feature.ledger
 
 import com.xxjz.ledger.core.common.DateUtils
+import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import java.time.LocalDate
 
-/** 列表中的一行账目（已带分类展示信息）。 */
+/** 列表中的一行账目（已带分类与账户的展示信息）。 */
 data class TxnRow(
     val txn: Txn,
     val categoryName: String,
     val categoryIcon: String,
+    /** 付款 / 转出账户名；账户被删掉时为空串（v1.9.5 第 4 条：行内要能看见账户）。 */
+    val accountName: String = "",
+    /** 转账的转入账户名；非转账为 null。 */
+    val toAccountName: String? = null,
+    /** 发生时刻，`HH:mm`（流水要能看出这一天什么时候花的）。 */
+    val timeLabel: String = "",
 )
 
 /** 按天分组的流水。 */
@@ -37,6 +44,7 @@ object LedgerGrouper {
         txns: List<Txn>,
         categories: Map<String, Category>,
         today: LocalDate = DateUtils.today(),
+        accounts: Map<String, Account> = emptyMap(),
     ): List<DayGroup> {
         val visible = txns.filter { !it.isDeleted && it.type != TxnType.DEBT }
         return visible
@@ -52,6 +60,10 @@ object LedgerGrouper {
                                 txn = txn,
                                 categoryName = cat?.name ?: defaultName(txn),
                                 categoryIcon = cat?.icon.orEmpty(),
+                                accountName = txn.accountId?.let { accounts[it]?.name }.orEmpty(),
+                                toAccountName =
+                                    if (txn.type == TxnType.TRANSFER) txn.toAccountId?.let { accounts[it]?.name } else null,
+                                timeLabel = timeLabelOf(txn.dateTime),
                             )
                         }
                 val counted = list.filter { !it.excludedFromStats }
@@ -72,6 +84,12 @@ object LedgerGrouper {
             TxnType.DEBT -> "借贷"
             else -> "未分类"
         }
+
+    /** 行内的时间文案，固定 `HH:mm`：首页按天分组，年月日是重复信息。 */
+    fun timeLabelOf(millis: Long): String {
+        val dt = DateUtils.toDateTime(millis)
+        return "%02d:%02d".format(dt.hour, dt.minute)
+    }
 
     fun weekdayOf(date: LocalDate): String =
         when (date.dayOfWeek.value) {

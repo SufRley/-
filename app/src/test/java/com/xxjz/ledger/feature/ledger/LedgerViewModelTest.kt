@@ -4,6 +4,7 @@ import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase
+import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
 import com.xxjz.ledger.testutil.FakeSettingsDataStore
@@ -52,6 +53,7 @@ class LedgerViewModelTest {
             templateRepository = templateRepo,
             settings = settings,
             budgetForMonth = GetBudgetForMonthUseCase(FakeBudgetRepository()),
+            accountRepository = FakeAccountRepository(),
         )
 
     private fun txn(id: String) =

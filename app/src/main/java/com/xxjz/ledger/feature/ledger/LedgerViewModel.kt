@@ -8,6 +8,7 @@ import com.xxjz.ledger.data.datastore.needsBackupReminder
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
+import com.xxjz.ledger.domain.repository.AccountRepository
 import com.xxjz.ledger.domain.repository.CategoryRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
@@ -58,6 +59,7 @@ class LedgerViewModel
         private val templateRepository: TemplateRepository,
         private val settings: SettingsRepository,
         private val budgetForMonth: com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase,
+        private val accountRepository: AccountRepository,
     ) : ViewModel() {
         private val month = MutableStateFlow(YearMonth.now())
 
@@ -69,15 +71,22 @@ class LedgerViewModel
             month
                 .flatMapLatest { ym ->
                     val range = DateUtils.monthRange(ym.year, ym.monthValue)
+                    // 六个流超出 combine 的泛型重载上限，先并三股再并四股；
+                    // 账户是行内「谁付的钱」的来源，必须一起观察，否则改名后列表不刷新
+                    val core =
+                        combine(
+                            txnRepository.observeInRange(range.first, range.last),
+                            categoryRepository.observeAll(),
+                            accountRepository.observeWithBalances(),
+                        ) { txns, categories, accounts -> Triple(txns, categories, accounts) }
                     combine(
-                        txnRepository.observeInRange(range.first, range.last),
-                        categoryRepository.observeAll(),
+                        core,
                         templateRepository.observeAll(),
                         settings.settings,
                         budgetForMonth.observe(DateUtils.monthKeyOf(ym.atDay(1))),
-                    ) { txns, categories, templates, pref, budgets ->
+                    ) { (txns, categories, accounts), templates, pref, budgets ->
                         val map = categories.associateBy { it.id }
-                        val groups = LedgerGrouper.group(txns, map)
+                        val groups = LedgerGrouper.group(txns, map, accounts = accounts.associateBy { it.id })
                         val counted = txns.filter { !it.excludedFromStats }
                         val expenseSum = counted.filter { it.type == com.xxjz.ledger.domain.model.TxnType.EXPENSE }.sumOf { it.amount }
                         LedgerUiState(

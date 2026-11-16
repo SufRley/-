@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -171,12 +172,16 @@ fun LedgerScreen(
                 )
                 BudgetOverviewCard(budget = state.budget, onOpen = onOpenBudget)
             } else {
+                // 必须用 weight 而不是 fillMaxSize：Column 里未加权的子项拿的是父级最大高度，
+                // 不是「剩下多少」。写 fillMaxSize 会让列表比可用空间高出一截，
+                // 可视区被挤到只剩四五条，而且滚到底也够不到最后的预算卡（v1.9.5 第 4 条）。
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.weight(1f).fillMaxWidth().testTag("txn_list"),
                     contentPadding = PaddingValues(bottom = 96.dp),
                 ) {
                     state.groups.forEach { group ->
                         item(key = "head_${group.dateKey}") { DayHeader(group) }
+                        val lastId = group.rows.lastOrNull()?.txn?.id
                         items(group.rows, key = { it.txn.id }) { row ->
                             TxnItem(
                                 row = row,
@@ -191,6 +196,14 @@ fun LedgerScreen(
                                 },
                                 onLongClick = { if (!selecting) menuRow = row },
                             )
+                            // 分隔线内缩、不通栏：通栏会把页面切成一条条，内缩才是「条目之间有界限」
+                            if (row.txn.id != lastId) {
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(horizontal = 16.dp),
+                                    thickness = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant,
+                                )
+                            }
                         }
                     }
                     // 预算概览卡固定在列表最下层（v1.8.0 / PRD F4、D7）
@@ -388,7 +401,7 @@ private fun SummaryCell(
 @Composable
 private fun DayHeader(group: DayGroup) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
@@ -419,11 +432,16 @@ private fun DayHeader(group: DayGroup) {
 }
 
 /**
- * 一条流水（PRD v1.9.0 第 3 条，v1.9.4 第 4 条移除左滑删除）。
+ * 一条流水（PRD v1.9.0 第 3 条，v1.9.5 第 4 条重排行内信息）。
  *
- * 两种交互：轻点打开详情、长按弹动作面板。删除统一走长按抽屉最底部的红色项——
- * 一行上叠四种手势（点击、长按、左滑、批量勾选）误触率太高，且左滑删除没有任何提示，
- * 与批量删除/抽屉删除的口径也不一致。
+ * 两种交互：轻点打开详情、长按弹动作面板。删除统一走长按抽屉最底部的红色项。
+ *
+ * 行内分四个固定位置，扫视时不必逐字读：
+ * ```
+ * [图标] 餐饮 · 午饭              ¥38.00
+ *        12:30                        招行储蓄卡
+ * ```
+ * 以前分类名、备注、金额挤在一条基线上，一眼抓不到「花了多少、从哪张卡出的」。
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -442,7 +460,7 @@ private fun TxnItem(
                 // 必须有背景：列表下面还有预算概览卡，透明会让它透上来
                 .background(MaterialTheme.colorScheme.surface)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-                .padding(horizontal = 16.dp, vertical = 10.dp)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
                 .testTag("txn_item_${txn.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -469,25 +487,42 @@ private fun TxnItem(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(row.categoryName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                Text(
+                    text = titleOf(row),
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
                 if (txn.pendingReimbursement) {
                     TinyBadge("待报销", "badge_reimburse_${txn.id}")
                 }
                 if (txn.excludedFromStats) {
                     TinyBadge("不计入", "badge_excluded_${txn.id}")
                 }
+                Spacer(Modifier.weight(1f))
+                AmountText(
+                    cents = txn.amount,
+                    direction =
+                        when (txn.type) {
+                            TxnType.INCOME -> AmountDirection.INCOME
+                            TxnType.EXPENSE -> AmountDirection.EXPENSE
+                            else -> AmountDirection.NEUTRAL
+                        },
+                    signed = txn.type != TxnType.TRANSFER,
+                    style = MaterialTheme.typography.bodyLarge,
+                )
             }
-            val sub =
-                buildString {
-                    if (txn.note.isNotBlank()) append(txn.note)
-                    if (txn.type == TxnType.TRANSFER) {
-                        if (isNotEmpty()) append(" · ")
-                        append("转账")
-                    }
-                }
-            if (sub.isNotEmpty()) {
+            Spacer(Modifier.height(3.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = sub,
+                    text = row.timeLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = accountLineOf(row),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -495,18 +530,23 @@ private fun TxnItem(
                 )
             }
         }
-        AmountText(
-            cents = txn.amount,
-            direction =
-                when (txn.type) {
-                    TxnType.INCOME -> AmountDirection.INCOME
-                    TxnType.EXPENSE -> AmountDirection.EXPENSE
-                    else -> AmountDirection.NEUTRAL
-                },
-            signed = txn.type != TxnType.TRANSFER,
-            style = MaterialTheme.typography.bodyLarge,
-        )
     }
+}
+
+/** 主标题：`分类 · 备注`，备注为空就只留分类，不留孤零零的分隔点。 */
+private fun titleOf(row: TxnRow): String {
+    val note = row.txn.note.trim()
+    return if (note.isEmpty()) row.categoryName else "${row.categoryName} · $note"
+}
+
+/** 副标题右侧：转账写「A → B」，其余写付款账户名。 */
+private fun accountLineOf(row: TxnRow): String {
+    if (row.txn.type == TxnType.TRANSFER) {
+        val from = row.accountName.ifBlank { "账户" }
+        val to = row.toAccountName.orEmpty().ifBlank { "账户" }
+        return "$from → $to"
+    }
+    return row.accountName
 }
 
 /** 小标签：待报销 / 不计入。 */

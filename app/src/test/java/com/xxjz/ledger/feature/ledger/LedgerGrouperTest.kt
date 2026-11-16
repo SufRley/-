@@ -1,10 +1,13 @@
 package com.xxjz.ledger.feature.ledger
 
+import com.xxjz.ledger.domain.model.Account
+import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.Txn
 import com.xxjz.ledger.domain.model.TxnType
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -119,5 +122,69 @@ class LedgerGrouperTest {
         val row = LedgerGrouper.group(list, categories, today).first().rows.first()
         assertEquals("未分类", row.categoryName)
         assertTrue(row.categoryIcon.isEmpty())
+    }
+
+    // ---------- 行内展示信息（v1.9.5 第 4 条） ----------
+
+    private val accounts =
+        mapOf(
+            "acc" to Account(id = "acc", name = "招行储蓄卡", type = AccountType.SAVINGS),
+            "wechat" to Account(id = "wechat", name = "微信", type = AccountType.CASH),
+        )
+
+    @Test
+    fun `行内带出账户名与时间`() {
+        val row =
+            LedgerGrouper
+                .group(listOf(txn("a", TxnType.EXPENSE, 1000, today, minute = 9)), categories, today, accounts)
+                .first()
+                .rows
+                .first()
+
+        assertEquals("招行储蓄卡", row.accountName)
+        assertEquals("09:00", row.timeLabel)
+    }
+
+    @Test
+    fun `转账行带出两端账户名`() {
+        val t =
+            txn("t", TxnType.TRANSFER, 5000, today).copy(toAccountId = "wechat")
+        val row = LedgerGrouper.group(listOf(t), categories, today, accounts).first().rows.first()
+
+        assertEquals("招行储蓄卡", row.accountName)
+        assertEquals("微信", row.toAccountName)
+    }
+
+    @Test
+    fun `非转账行不吐转入账户`() {
+        val row =
+            LedgerGrouper
+                .group(listOf(txn("a", TxnType.EXPENSE, 1000, today)), categories, today, accounts)
+                .first()
+                .rows
+                .first()
+
+        assertNull(row.toAccountName)
+    }
+
+    @Test
+    fun `账户被删掉时账户名为空串而不是抛异常`() {
+        val t = txn("a", TxnType.EXPENSE, 1000, today).copy(accountId = "gone")
+        val row = LedgerGrouper.group(listOf(t), categories, today, accounts).first().rows.first()
+
+        assertEquals("", row.accountName)
+    }
+
+    @Test
+    fun `不传账户表时行内字段退化为空，不崩`() {
+        val row =
+            LedgerGrouper
+                .group(listOf(txn("a", TxnType.EXPENSE, 1000, today)), categories, today)
+                .first()
+                .rows
+                .first()
+
+        assertEquals("", row.accountName)
+        assertEquals("12:00", row.timeLabel, "时间不依赖账户表")
     }
 }
