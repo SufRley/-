@@ -89,8 +89,8 @@ data class LedgerNav(
     val onOpenSplit: (String) -> Unit = {},
     /** 备份提示条上的「去备份」（v1.9.6 第 1 条）。 */
     val onOpenBackup: () -> Unit = {},
-    /** 首页「更多明细」卡进全部明细页（v1.9.6 第 2 条）。 */
-    val onOpenAllTxns: () -> Unit = {},
+    /** 首页「更多明细」卡进全部明细页（v1.9.6 第 2 条）；参数是首页当前月份。 */
+    val onOpenAllTxns: (Int) -> Unit = {},
 )
 
 /** P01 明细首页：月小计 + 按天分组流水（M2/M4 范围）。 */
@@ -226,7 +226,7 @@ fun LedgerScreen(
                     }
                     if (state.hasMore) {
                         item(key = "more_txns") {
-                            MoreTxnCard(count = state.count, onClick = onOpenAllTxns)
+                            MoreTxnCard(count = state.count, onClick = { onOpenAllTxns(state.monthKey) })
                         }
                     }
                     // 预算概览卡固定在列表最下层（v1.8.0 / PRD F4、D7）
@@ -640,7 +640,7 @@ internal fun DayHeader(group: DayGroup) {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TxnItem(
+internal fun TxnItem(
     row: TxnRow,
     selecting: Boolean,
     selected: Boolean,
@@ -761,4 +761,4 @@ private fun TinyBadge(
 }
 
 /** 勾选集合的增删。 */
-private fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id
+internal fun Set<String>.toggle(id: String): Set<String> = if (id in this) this - id else this + id

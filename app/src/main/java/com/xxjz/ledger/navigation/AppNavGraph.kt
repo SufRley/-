@@ -16,6 +16,7 @@ import com.xxjz.ledger.feature.detail.TxnDetailScreen
 import com.xxjz.ledger.feature.editor.EditorScreen
 import com.xxjz.ledger.feature.editor.EditorViewModel
 import com.xxjz.ledger.feature.export.CsvExportScreen
+import com.xxjz.ledger.feature.ledger.AllTxnsScreen
 import com.xxjz.ledger.feature.mine.MineScreen
 import com.xxjz.ledger.feature.onboarding.OnboardingScreen
 import com.xxjz.ledger.feature.recurring.RecurringEditScreen
@@ -177,6 +178,28 @@ internal fun NavGraphBuilder.appNavGraph(
     }
     composable(Routes.REIMBURSEMENT) {
         ReimbursementScreen(onBack = { navController.popBackStack() })
+    }
+    composable(
+        route = Routes.ALL_TXNS,
+        arguments =
+            listOf(
+                navArgument(Routes.ARG_ALL_TXNS_MONTH) {
+                    type = NavType.IntType
+                    defaultValue = 0
+                },
+            ),
+    ) { entry ->
+        AllTxnsScreen(
+            initialMonthKey = entry.arguments?.getInt(Routes.ARG_ALL_TXNS_MONTH) ?: 0,
+            onBack = { navController.popBackStack() },
+            onOpenTxn = { id -> navController.navigate(Routes.txnDetail(id)) },
+            onEditTxn = { id -> navController.navigate(Routes.editor(txnId = id)) },
+            onOpenAccount = { id -> navController.navigate(Routes.accountDetail(id)) },
+            onOpenRecurring = { navController.navigate(Routes.RECURRING) },
+            onOpenSplit = { id -> navController.navigate(Routes.split(id)) },
+            onOpenSearch = { navController.navigate(Routes.SEARCH) },
+            onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
+        )
     }
     composable(Routes.BACKUP) {
         BackupScreen(onBack = { navController.popBackStack() })

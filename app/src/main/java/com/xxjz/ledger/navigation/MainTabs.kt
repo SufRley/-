@@ -171,4 +171,6 @@ private fun ledgerNav(
         onMenu = onMenuClick,
         onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
         onOpenBackup = { navController.navigate(Routes.BACKUP) },
+        // 「更多明细」带上首页正在看的月份，点进去停在同一个月
+        onOpenAllTxns = { monthKey -> navController.navigate(Routes.allTxns(monthKey)) },
     )

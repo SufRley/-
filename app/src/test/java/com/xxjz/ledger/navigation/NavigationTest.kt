@@ -140,4 +140,12 @@ class NavigationTest {
             )
         }
     }
+
+    @Test
+    @DisplayName("全部明细是二级页，路由带首页当前月份（v1.9.6 第 2 条）")
+    fun allTxnsRoute() {
+        assertEquals("all_txns?month=202611", Routes.allTxns(202611))
+        assertFalse(MainChrome.showBottomBar(Routes.ALL_TXNS), "全部明细是二级页，不该有底栏")
+        assertFalse(MainChrome.showFab(Routes.ALL_TXNS), "也不该有悬浮＋")
+    }
 }

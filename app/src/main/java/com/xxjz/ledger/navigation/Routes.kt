@@ -76,6 +76,17 @@ object Routes {
     /** 待报销 P26。 */
     const val REIMBURSEMENT = "reimbursement"
 
+    /**
+     * 全部明细（v1.9.6 第 2 条）。
+     *
+     * 首页只放最近四笔，完整清单在这里。[ARGS_ALL_TXNS_MONTH] 带首页当前看的月份，
+     * 让「更多明细」点进去停在同一个月，而不是跳回当前自然月。
+     */
+    const val ALL_TXNS = "all_txns?month={monthKey}"
+    const val ARG_ALL_TXNS_MONTH = "monthKey"
+
+    fun allTxns(monthKey: Int): String = "all_txns?month=$monthKey"
+
     /** 拆分明细 P27（v1.9.5 第 8 条）：一笔账拆成多个账户各自出多少。 */
     const val SPLIT = "split/{txnId}"
 

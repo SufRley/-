@@ -345,4 +345,20 @@ class LedgerListLayoutTest {
         val budget = compose.onNodeWithTag("budget_card").getBoundsInRoot()
         assertTrue("更多明细卡应在预算卡上方", more.top < budget.top)
     }
+
+    @Test
+    fun `点更多明细带出首页当前月份`() {
+        seed(12)
+        var picked = -1
+        val vm = viewModel()
+        compose.setContent {
+            XxjzTheme { LedgerScreen(nav = LedgerNav(onOpenAllTxns = { picked = it }), viewModel = vm) }
+        }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("more_txns").performClick()
+
+        assertTrue("点更多明细要把当前月份带过去，实际 $picked", picked == 202611)
+    }
 }
