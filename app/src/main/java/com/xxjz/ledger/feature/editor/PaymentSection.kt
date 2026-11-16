@@ -1,5 +1,10 @@
 package com.xxjz.ledger.feature.editor
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Close
@@ -27,11 +31,11 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,10 +43,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.xxjz.ledger.core.common.MoneyFormatter
+import com.xxjz.ledger.core.designsystem.component.AmountInput
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.DebtDirection
@@ -93,14 +97,9 @@ internal fun PaymentSection(
         }
 
         AccountLine(
-            label = if (state.type == TxnType.DEBT) "资金账户" else "付款账户",
+            label = accountLabelOf(state.type),
             value = state.accountName,
-            placeholder =
-                when (state.type) {
-                    TxnType.TRANSFER -> "选择转出账户"
-                    TxnType.DEBT -> "选择资金账户"
-                    else -> "请选择"
-                },
+            placeholder = accountPlaceholderOf(state.type),
             tag = "row_account",
             onClick = onPickAccount,
             icon = accountGlyphOf(state.accounts.firstOrNull { it.id == state.accountId }?.type),
@@ -130,9 +129,18 @@ internal fun PaymentSection(
             FeeField(value = state.feeText, onChange = viewModel::setFee)
         }
 
-        if (splitAvailable && state.splitMode) {
-            Spacer(Modifier.height(10.dp))
-            SplitPanel(state = state, viewModel = viewModel)
+        // 展开/收起给一点高度与透明度过渡（v1.9.6 第 5 条）：面板一下长出来会把下面的
+        // 保存按钮顶走，用户手指正按在那儿就会点空。只做这一处动画，行本身不加——
+        // 输入框跟着做位移动画，掉帧比瞬移更难受。
+        AnimatedVisibility(
+            visible = splitAvailable && state.splitMode,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            Column {
+                Spacer(Modifier.height(10.dp))
+                SplitPanel(state = state, viewModel = viewModel)
+            }
         }
     }
 }
@@ -163,11 +171,15 @@ private fun SplitPanel(
     }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         state.fundAccounts.forEach { account ->
-            SplitAccountRow(
-                account = account,
-                value = state.splits[account.id]?.let { MoneyFormatter.centsToPlain(it) }.orEmpty(),
-                onChange = { viewModel.setSplitAmount(account.id, it) },
-            )
+            // key 用账户 id 而不是位置：增删账户时按位置复用会让焦点跟错行，
+            // 表现就是「刚点进去的框突然跳到了别的账户」
+            key(account.id) {
+                SplitAccountRow(
+                    account = account,
+                    value = state.splits[account.id]?.let { MoneyFormatter.centsToPlain(it) }.orEmpty(),
+                    onChange = { viewModel.setSplitAmount(account.id, it) },
+                )
+            }
         }
     }
     Spacer(Modifier.height(6.dp))
@@ -240,15 +252,13 @@ private fun SplitAccountRow(
             modifier = Modifier.weight(1f),
             maxLines = 1,
         )
-        OutlinedTextField(
+        AmountInput(
             value = value,
-            onValueChange = { raw -> onChange(raw.filter { it.isDigit() || it == '.' }.take(12)) },
-            placeholder = { Text("0.00") },
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyMedium,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            shape = RoundedCornerShape(10.dp),
-            modifier = Modifier.width(SplitInputWidth).height(52.dp).testTag("split_input_${account.id}"),
+            onValueChange = onChange,
+            placeholder = "0.00",
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(SplitInputWidth),
+            testTag = "split_input_${account.id}",
         )
     }
 }
@@ -440,19 +450,45 @@ internal fun accountGlyphOf(type: AccountType?): ImageVector =
         null -> Icons.Filled.Payments
     }
 
-/** 转账手续费输入。 */
+/** 转账手续费：与账户行同一种排法（左侧标签、右侧金额），比一个带浮动 label 的输入框省半行高度。 */
 @Composable
 internal fun FeeField(
     value: String,
     onChange: (String) -> Unit,
 ) {
-    Spacer(Modifier.height(8.dp))
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text("手续费") },
-        singleLine = true,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().testTag("fee_input"),
-    )
+    Spacer(Modifier.height(4.dp))
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "手续费",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        AmountInput(
+            value = value,
+            onValueChange = onChange,
+            placeholder = "0.00",
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(120.dp),
+            testTag = "fee_input",
+        )
+    }
 }
+
+/** 账户行的标签按交易类型给（v1.9.6 第 6 条）：收入不是「付款」，转账是「转出」。 */
+internal fun accountLabelOf(type: TxnType): String =
+    when (type) {
+        TxnType.EXPENSE -> "付款账户"
+        TxnType.INCOME -> "收款账户"
+        TxnType.TRANSFER -> "转出账户"
+        TxnType.DEBT -> "资金账户"
+    }
+
+/** 未选账户时的占位：收入要写「收款」，否则和标签对不上。 */
+internal fun accountPlaceholderOf(type: TxnType): String =
+    when (type) {
+        TxnType.EXPENSE -> "请选择"
+        TxnType.INCOME -> "请选择收款账户"
+        TxnType.TRANSFER -> "选择转出账户"
+        TxnType.DEBT -> "选择资金账户"
+    }

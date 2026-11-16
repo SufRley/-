@@ -2,9 +2,16 @@ package com.xxjz.ledger.feature.editor
 
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import com.xxjz.ledger.core.designsystem.theme.XxjzTheme
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
@@ -28,6 +35,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -160,5 +168,60 @@ class PaymentSectionTest {
         render(vm)
 
         compose.onNodeWithTag("split_selector").assertDoesNotExist()
+    }
+
+    @Test
+    fun `支出显示付款账户`() {
+        val vm = viewModel()
+        render(vm)
+
+        compose.onNodeWithText("付款账户").assertExists()
+    }
+
+    @Test
+    fun `收入显示收款账户而不是付款账户`() {
+        val vm = viewModel()
+        vm.setType(TxnType.INCOME)
+        render(vm)
+
+        compose.onNodeWithText("收款账户").assertExists()
+        compose.onAllNodesWithText("付款账户").assertCountEquals(0)
+    }
+
+    @Test
+    fun `转账显示转出账户`() {
+        val vm = viewModel()
+        vm.setType(TxnType.TRANSFER)
+        render(vm)
+
+        compose.onNodeWithText("转出账户").assertExists()
+        compose.onNodeWithText("转入账户").assertExists()
+    }
+
+    @Test
+    fun `组合面板三个账户来回点都能切焦点`() {
+        accountRepo.items["acc3"] = Account(id = "acc3", name = "建行", type = AccountType.SAVINGS)
+        val vm = viewModel()
+        render(vm)
+        compose.onNodeWithTag("split_mode_split").performClick()
+        compose.waitForIdle()
+
+        listOf("acc", "acc2", "acc3", "acc", "acc2").forEach { id ->
+            compose.onNodeWithTag("split_input_$id").performTouchInput { click(Offset(centerX, 2f)) }
+            compose.onNodeWithTag("split_input_$id").assertIsFocused()
+        }
+    }
+
+    @Test
+    fun `账户标签与占位按类型给的规则表`() {
+        assertEquals("付款账户", accountLabelOf(TxnType.EXPENSE))
+        assertEquals("收款账户", accountLabelOf(TxnType.INCOME))
+        assertEquals("转出账户", accountLabelOf(TxnType.TRANSFER))
+        assertEquals("资金账户", accountLabelOf(TxnType.DEBT))
+
+        assertEquals("请选择", accountPlaceholderOf(TxnType.EXPENSE))
+        assertEquals("请选择收款账户", accountPlaceholderOf(TxnType.INCOME))
+        assertEquals("选择转出账户", accountPlaceholderOf(TxnType.TRANSFER))
+        assertEquals("选择资金账户", accountPlaceholderOf(TxnType.DEBT))
     }
 }

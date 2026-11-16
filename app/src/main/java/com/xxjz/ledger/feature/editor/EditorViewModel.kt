@@ -248,7 +248,7 @@ data class EditorUiState(
                 type == TxnType.EXPENSE || type == TxnType.INCOME ->
                     when {
                         categoryId == null -> "请选择分类"
-                        accountId == null -> "请选择账户"
+                        accountId == null -> if (type == TxnType.INCOME) "请选择收款账户" else "请选择账户"
                         // 历史数据里可能有「支出 + 投资账户」：编辑时不偷偷改账户，只说清为什么不给存
                         type == TxnType.EXPENSE && !FundPayable.canPay(payAccount) ->
                             "原账户不可用于付款，请重新选择"
