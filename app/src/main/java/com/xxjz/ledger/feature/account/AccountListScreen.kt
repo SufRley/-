@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Insights
@@ -102,14 +103,16 @@ fun AccountListScreen(
                 onCreate = { creating = true },
             )
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                EntryCards(
-                    reimbursement = state.reimbursement,
-                    onOpenReimbursement = onOpenReimbursement,
-                )
+                // 净资产在顶、待报销在下（v1.9.5 第 6 条）：净资产是这一页的主信息，
+                // 待报销只是个二级入口，主信息不该被一个入口挤到第二屏
                 AssetCard(
                     assets = state.summary.assets,
                     liabilities = state.summary.liabilities,
                     net = state.summary.net,
+                )
+                ReimbursementStrip(
+                    reimbursement = state.reimbursement,
+                    onOpenReimbursement = onOpenReimbursement,
                 )
                 if (state.groups.isEmpty() && !state.loading) {
                     EmptyState(
@@ -231,43 +234,54 @@ private fun AccountHeader(
     )
 }
 
+/**
+ * 待报销入口：整宽横条（v1.9.5 第 6 条）。
+ *
+ * 与净资产卡对调后，原来那张半宽小卡会独占一行、右半留白，看起来像布局漏了东西。
+ * 改成「左标题、右金额与笔数、末尾箭头」的一行，与抽屉式入口的形态一致。
+ */
 @Composable
-private fun EntryCards(
+private fun ReimbursementStrip(
     reimbursement: EntryCardState,
     onOpenReimbursement: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Card(
+        onClick = onOpenReimbursement,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 8.dp)
+                .testTag("entry_reimbursement"),
     ) {
-        EntryCard(
-            title = "待报销",
-            value = reimbursement.amountCents,
-            subtitle = if (reimbursement.count == 0) "暂无" else "${reimbursement.count} 笔待处理",
-            onClick = onOpenReimbursement,
-            modifier = Modifier.weight(1f).testTag("entry_reimbursement"),
-        )
-    }
-}
-
-@Composable
-private fun EntryCard(
-    title: String,
-    value: Long,
-    subtitle: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(onClick = onClick, modifier = modifier) {
-        Column(Modifier.padding(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("待报销", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text =
+                        if (reimbursement.count == 0) {
+                            "暂无"
+                        } else {
+                            "${reimbursement.count} 笔待处理"
+                        },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
-                text = "¥${MoneyFormatter.centsToYuan(value)}",
+                text = "¥${MoneyFormatter.centsToYuan(reimbursement.amountCents)}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 2.dp),
             )
-            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(
+                imageVector = Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp).size(18.dp),
+            )
         }
     }
 }

@@ -7,7 +7,6 @@ import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
-import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -41,7 +40,6 @@ class LedgerViewModelTest {
     private val txnRepo = FakeTxnRepository()
     private val categoryRepo = FakeCategoryRepository()
     private val templateRepo = FakeTemplateRepository()
-    private val settings = FakeSettingsDataStore()
 
     private val today: LocalDate = DateUtils.today()
     private val now: Long = DateUtils.toMillis(today, LocalTime.NOON)
@@ -51,7 +49,6 @@ class LedgerViewModelTest {
             txnRepository = txnRepo,
             categoryRepository = categoryRepo,
             templateRepository = templateRepo,
-            settings = settings,
             budgetForMonth = GetBudgetForMonthUseCase(FakeBudgetRepository()),
             accountRepository = FakeAccountRepository(),
         )

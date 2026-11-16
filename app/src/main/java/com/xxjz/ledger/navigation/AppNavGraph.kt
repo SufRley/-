@@ -93,7 +93,6 @@ internal fun NavGraphBuilder.appNavGraph(
                     onUseTemplate = { id -> navController.navigate(Routes.editor(templateId = id)) },
                     onOpenSearch = { navController.navigate(Routes.SEARCH) },
                     onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
-                    onOpenBackup = { navController.navigate(Routes.BACKUP) },
                     onOpenBudget = { navController.navigate(Routes.BUDGET) },
                     onMenu = onMenuClick,
                     onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },

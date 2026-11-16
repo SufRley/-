@@ -3,8 +3,6 @@ package com.xxjz.ledger.feature.ledger
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.data.datastore.SettingsRepository
-import com.xxjz.ledger.data.datastore.needsBackupReminder
 import com.xxjz.ledger.data.local.seed.SeedData
 import com.xxjz.ledger.domain.model.Template
 import com.xxjz.ledger.domain.model.Txn
@@ -41,8 +39,6 @@ data class LedgerUiState(
     val pendingCount: Int = 0,
     val templates: List<Template> = emptyList(),
     val loading: Boolean = true,
-    /** 超过 7 天没备份时在首页顶部提示（M8-T8）。 */
-    val backupHint: String? = null,
     /** 底部预算概览卡（v1.8.0 / PRD F4）。 */
     val budget: BudgetCardState = BudgetCardState(),
 ) {
@@ -62,7 +58,6 @@ class LedgerViewModel
         private val txnRepository: TxnRepository,
         private val categoryRepository: CategoryRepository,
         private val templateRepository: TemplateRepository,
-        private val settings: SettingsRepository,
         private val budgetForMonth: com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase,
         private val accountRepository: AccountRepository,
     ) : ViewModel() {
@@ -84,12 +79,12 @@ class LedgerViewModel
                             categoryRepository.observeAll(),
                             accountRepository.observeWithBalances(),
                         ) { txns, categories, accounts -> Triple(txns, categories, accounts) }
+                    // 备份提示已从首页撤掉（v1.9.5 第 7 条），settings 流不再参与组装
                     combine(
                         core,
                         templateRepository.observeAll(),
-                        settings.settings,
                         budgetForMonth.observe(DateUtils.monthKeyOf(ym.atDay(1))),
-                    ) { (txns, categories, accounts), templates, pref, budgets ->
+                    ) { (txns, categories, accounts), templates, budgets ->
                         val map = categories.associateBy { it.id }
                         val groups = LedgerGrouper.group(txns, map, accounts = accounts.associateBy { it.id })
                         val counted = txns.filter { !it.excludedFromStats }
@@ -115,12 +110,6 @@ class LedgerViewModel
                                     measuredExpense = expenseSum,
                                 ),
                             loading = false,
-                            backupHint =
-                                if (needsBackupReminder(pref.backupReminderEnabled, pref.lastBackupAt, System.currentTimeMillis())) {
-                                    if (pref.lastBackupAt <= 0) "还没有备份过，建议去「我的 → 备份与恢复」导出一份" else "距上次备份已超过 7 天"
-                                } else {
-                                    null
-                                },
                         )
                     }
                 }.stateIn(

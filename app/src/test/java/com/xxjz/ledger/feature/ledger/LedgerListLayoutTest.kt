@@ -2,9 +2,11 @@ package com.xxjz.ledger.feature.ledger
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,7 +21,6 @@ import com.xxjz.ledger.domain.usecase.GetBudgetForMonthUseCase
 import com.xxjz.ledger.testutil.FakeAccountRepository
 import com.xxjz.ledger.testutil.FakeBudgetRepository
 import com.xxjz.ledger.testutil.FakeCategoryRepository
-import com.xxjz.ledger.testutil.FakeSettingsDataStore
 import com.xxjz.ledger.testutil.FakeTemplateRepository
 import com.xxjz.ledger.testutil.FakeTxnRepository
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,6 @@ class LedgerListLayoutTest {
             txnRepository = txnRepo,
             categoryRepository = categoryRepo,
             templateRepository = FakeTemplateRepository(),
-            settings = FakeSettingsDataStore(),
             budgetForMonth = GetBudgetForMonthUseCase(FakeBudgetRepository()),
             accountRepository = accountRepo,
         )
@@ -209,5 +209,19 @@ class LedgerListLayoutTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("暂无", substring = true).assertExists()
+    }
+
+    @Test
+    fun `首页不再出现备份提示`() {
+        seed(2)
+        val vm = viewModel()
+        compose.setContent {
+            XxjzTheme { LedgerScreen(nav = LedgerNav(), viewModel = vm) }
+        }
+        dispatcher.scheduler.advanceUntilIdle()
+        compose.waitForIdle()
+
+        // 备份入口只在抽屉里（v1.9.5 第 7 条），首页顶部不该再占一行
+        compose.onAllNodesWithTag("home_backup_hint").assertCountEquals(0)
     }
 }

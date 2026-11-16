@@ -39,7 +39,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,7 +78,6 @@ data class LedgerNav(
     val onUseTemplate: (String) -> Unit = {},
     val onOpenSearch: () -> Unit = {},
     val onOpenCalendar: () -> Unit = {},
-    val onOpenBackup: () -> Unit = {},
     val onOpenBudget: () -> Unit = {},
     val onMenu: () -> Unit = {},
     val onOpenReimbursement: () -> Unit = {},
@@ -99,7 +97,6 @@ fun LedgerScreen(
     val onEdit = nav.onEditTxn
     val onOpenSearch = nav.onOpenSearch
     val onOpenCalendar = nav.onOpenCalendar
-    val onOpenBackup = nav.onOpenBackup
     val onOpenReimbursement = nav.onOpenReimbursement
     val onOpenBudget = nav.onOpenBudget
     val onMenu = nav.onMenu
@@ -140,29 +137,6 @@ fun LedgerScreen(
                 onCalendar = onOpenCalendar,
                 onMenu = onMenu,
             )
-            state.backupHint?.let { hint ->
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.secondaryContainer)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                            .testTag("home_backup_hint"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        hint,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(onClick = onOpenBackup, modifier = Modifier.testTag("home_backup_action")) {
-                        Text("去备份")
-                    }
-                }
-            }
             SummaryCard(
                 income = state.income,
                 expense = state.expense,
