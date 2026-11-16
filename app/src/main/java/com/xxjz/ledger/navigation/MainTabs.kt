@@ -2,13 +2,16 @@ package com.xxjz.ledger.navigation
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -20,6 +23,7 @@ import com.xxjz.ledger.feature.account.AccountListScreen
 import com.xxjz.ledger.feature.ledger.LedgerNav
 import com.xxjz.ledger.feature.ledger.LedgerScreen
 import com.xxjz.ledger.feature.report.ReportScreen
+import kotlin.math.abs
 
 /**
  * 三个主 Tab 的选中态与「切回去」的历史（v1.9.5 第 2 条）。
@@ -96,24 +100,61 @@ internal fun MainTabsPager(
     // 落定回调只在 LaunchedEffect 里持有一次，用 rememberUpdatedState 保证读到的是最新值，
     // 不会因为组合时机不同而通知到一个过期的目标
     val latestOnSelect by rememberUpdatedState(onSelect)
-    val latestTab by rememberUpdatedState(currentTab)
+    // 最近一次由本组件自己发起的切页。同一次组合里同步完成的切换（见下面的 settleToTarget）
+    // 不该再回传给调用方，否则会绕成「回传 → 改状态 → 再切页」的环
+    var handledPage by remember { mutableIntStateOf(currentTab.ordinal) }
 
     LaunchedEffect(pagerState.settledPage) {
-        val settled = MainTab.ofIndex(pagerState.settledPage)
-        if (settled != latestTab) latestOnSelect(settled)
+        val settled = pagerState.settledPage
+        if (settled == handledPage) return@LaunchedEffect
+        handledPage = settled
+        latestOnSelect(MainTab.ofIndex(settled))
     }
     LaunchedEffect(currentTab) {
-        if (pagerState.currentPage != currentTab.ordinal) {
-            pagerState.animateScrollToPage(currentTab.ordinal)
+        val target = currentTab.ordinal
+        if (pagerState.targetPage == target) return@LaunchedEffect
+        // 跨两页（明细 ↔ 账户）直接定位：中间那页只是路过，滑过去没有任何信息量，
+        // 只是让用户多等一次动画。相邻页保持动画，横滑的手感才连贯（v1.9.6 第 7 条）
+        //
+        // scrollToPage 底层是 snapToItem(id, requestRemeasure = true)，只搬位置不刷 settledPage；
+        // 而 PagerState.scroll 只在「开滚前没在滚」的空档里把 settledPage 对齐到 currentPage。
+        // 于是在「滚完立刻改目标」这种紧挨着的场景里，落定页会一直停在旧值：底栏高亮跟着旧值走，
+        // 按返回也退回旧页。补完动画后再让滚动状态对齐一次，把这个缺口补上。
+        if (abs(pagerState.currentPage - target) > 1) {
+            pagerState.scrollToPage(target)
+        } else {
+            pagerState.animateScrollToPage(target)
         }
+        pagerState.settleToTarget()
+        // 这一步是同步完成的：settledPage 的更新，以及上面那个 LaunchedEffect 的触发与执行，
+        // 都可能落在写 handledPage 之前。先记下来，避免把调用方刚下发的目标又回传给它。
+        handledPage = pagerState.settledPage
     }
 
     HorizontalPager(
         state = pagerState,
+        // 三页常驻（v1.9.6 第 7 条）。默认值 0 意味着只有当前页被组合：每次切页，目标页
+        // 都要从零组合——新建 ViewModel、发起查询、跑完整测量布局，低端机上就是一两百毫秒
+        // 的白屏。常驻的代价是三页的 ViewModel 同时存在、同时订阅数据库，但本项目是
+        // Room 本地单表聚合，这点开销远小于每次切页重建。
+        beyondViewportPageCount = MainTab.entries.size,
         modifier = modifier.fillMaxSize().testTag("main_pager"),
     ) { index ->
         pageContent(MainTab.ofIndex(index))
     }
+}
+
+/**
+ * 把「落定页」对齐到当前位置。
+ *
+ * `PagerState.scroll` 的唯一副作用是：开滚前若不在滚动中，就把 settledPage 置为 currentPage；
+ * 而 `scrollToPage` 会先 `awaitScrollDependencies` 再 `snapToItem`，当它紧跟在一次刚结束的
+ * 动画后面时，那个空档已经错过了，settledPage 就一直停在旧页。这里补一次滚动（位移 0），
+ * 让 PagerState 自己把状态对齐，不用反射去碰 private 的 settledPageState。
+ */
+private suspend fun PagerState.settleToTarget() {
+    if (settledPage == currentPage) return
+    scroll { }
 }
 
 /**

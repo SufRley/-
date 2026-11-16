@@ -206,7 +206,74 @@ class MainTabsPagerTest {
         compose.waitForIdle()
 
         assertTrue("页内横滚不该触发切页，实际收到 $picks", picks.isEmpty())
-        compose.onNodeWithTag("page_report").assertDoesNotExist()
+        // 三页常驻之后报表页始终在语义树里，不能再断言「不存在」；改成断言它不在可视区
+        compose.onNodeWithTag("page_report").assertIsNotDisplayed()
         compose.onNodeWithTag("inner_item_0").assertIsNotDisplayed()
+    }
+
+    @Test
+    @DisplayName("三页同时常驻：切页不再从零组合（v1.9.6 第 7 条）")
+    fun allPagesComposedUpFront() {
+        val composed = mutableSetOf<MainTab>()
+        compose.setContent {
+            XxjzTheme {
+                MainTabsPager(currentTab = MainTab.LEDGER, onSelect = {}) { tab ->
+                    composed += tab
+                    FakePage(tab)
+                }
+            }
+        }
+        compose.waitForIdle()
+
+        assertEquals(
+            "beyondViewportPageCount 为 0 时这里只会有一个，切页才会补上其余两页",
+            MainTab.entries.toSet(),
+            composed,
+        )
+    }
+
+    @Test
+    @DisplayName("跨两页点击直接定位到账户，不经过报表页的停留")
+    fun jumpTwoPages() {
+        var tab by mutableStateOf(MainTab.LEDGER)
+        val settled = mutableListOf<MainTab>()
+        compose.setContent {
+            XxjzTheme {
+                MainTabsPager(currentTab = tab, onSelect = { settled += it }) { t -> FakePage(t) }
+            }
+        }
+        compose.waitForIdle()
+
+        compose.runOnIdle { tab = MainTab.ACCOUNTS }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("page_accounts").assertIsDisplayed()
+        // 跨两页是直接定位，落定页在本次切页里就对齐了，不回传才是对的；
+        // 真正要验的是「没有在报表页停留」，以及随后按返回能退回明细
+        assertTrue("不该在报表页留一次选中，实际 $settled", MainTab.REPORT !in settled)
+        compose.runOnIdle { tab = MainTab.LEDGER }
+        compose.waitForIdle()
+        compose.onNodeWithTag("page_ledger").assertIsDisplayed()
+    }
+
+    @Test
+    @DisplayName("滚动刚结束就改目标：落定页仍对齐到新目标，底栏高亮不落后")
+    fun rapidTargetChangeStillSettles() {
+        var tab by mutableStateOf(MainTab.LEDGER)
+        val settled = mutableListOf<MainTab>()
+        compose.setContent {
+            XxjzTheme {
+                MainTabsPager(currentTab = tab, onSelect = { settled += it }) { t -> FakePage(t) }
+            }
+        }
+        compose.waitForIdle()
+
+        // 改目标后不等动画跑完就再改一次，模拟连点底栏
+        compose.runOnIdle { tab = MainTab.REPORT }
+        compose.runOnIdle { tab = MainTab.LEDGER }
+        compose.waitForIdle()
+
+        compose.onNodeWithTag("page_ledger").assertIsDisplayed()
+        assertEquals("不该回传任何切换，实际 $settled", emptyList<MainTab>(), settled)
     }
 }
