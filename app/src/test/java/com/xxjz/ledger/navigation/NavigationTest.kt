@@ -2,6 +2,7 @@ package com.xxjz.ledger.navigation
 
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -9,10 +10,14 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 
 /**
- * 导航与主框架（v1.8.0 / PRD F5、D8–D11）。
+ * 导航与主框架（v1.8.0 / PRD F5、D8–D11；v1.9.5 第 2 条改版）。
  *
  * 这些是「看一眼截图就能骗过自己」的规则，所以全部表驱动钉死：改 Tab、改抽屉、改 FAB 显隐
  * 只要没同步改这里，测试立刻红。
+ *
+ * v1.9.5 第 2 条把三个 Tab 合进了 [Routes.MAIN] 一个目的地（为了让横滑不重建 ViewModel），
+ * 于是「主 Tab 页」这件事从三条路由变成一条——这里对应的断言也跟着换口径，
+ * 但**意图没变**：主框架页必须有底栏和 ☰、二级页必须没有。
  */
 @DisplayName("导航与主框架")
 class NavigationTest {
@@ -21,11 +26,31 @@ class NavigationTest {
     fun threeTabs() {
         assertEquals(listOf("明细", "报表", "账户"), MainTab.entries.map { it.label })
         assertEquals(
-            listOf(Routes.LEDGER, Routes.REPORT, Routes.ACCOUNTS),
-            MainTab.entries.map { it.route },
+            listOf("ledger", "report", "accounts"),
+            MainTab.entries.map { it.key },
         )
-        assertFalse(MainTab.entries.any { it.route == Routes.MINE }, "「我的」Tab 必须取消")
-        assertFalse(MainTab.entries.any { it.route == Routes.BUDGET }, "「预算」不再是 Tab")
+        assertFalse(MainTab.entries.any { it.label == "我的" }, "「我的」Tab 必须取消")
+        assertFalse(MainTab.entries.any { it.label == "预算" }, "「预算」不再是 Tab")
+    }
+
+    @Test
+    @DisplayName("三个 Tab 住同一个目的地，横滑只换页不换目的地")
+    fun tabsShareOneDestination() {
+        assertEquals(setOf(Routes.MAIN), MAIN_TAB_ROUTES)
+        assertEquals(3, MainTab.entries.size, "页数与 Tab 数必须一致，否则 pager 会少一页或多一页空页")
+    }
+
+    @Test
+    @DisplayName("Tab 下标与 key 双向换算，越界/认不出都有确定兜底")
+    fun tabIndexMapping() {
+        MainTab.entries.forEach { tab ->
+            assertEquals(tab, MainTab.ofIndex(tab.ordinal))
+            assertEquals(tab, MainTab.ofKey(tab.key))
+        }
+        assertEquals(MainTab.ACCOUNTS, MainTab.ofIndex(99), "越界夹到末页，宁可停一页也不要崩")
+        assertEquals(MainTab.LEDGER, MainTab.ofIndex(-3), "负数同样夹回首屏")
+        assertNull(MainTab.ofKey("nope"))
+        assertNull(MainTab.ofKey(null))
     }
 
     @Test
@@ -50,12 +75,11 @@ class NavigationTest {
         )
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = ["ledger", "report", "accounts"])
-    @DisplayName("三个主 Tab 有底栏、有 ☰、没有 FAB（除明细）")
-    fun mainTabsChrome(route: String) {
-        assertTrue(MainChrome.showBottomBar(route))
-        assertTrue(MainChrome.showDrawer(route))
+    @Test
+    @DisplayName("主框架页有底栏、有 ☰")
+    fun mainTabChrome() {
+        assertTrue(MainChrome.showBottomBar(Routes.MAIN))
+        assertTrue(MainChrome.showDrawer(Routes.MAIN))
     }
 
     @ParameterizedTest
@@ -70,10 +94,11 @@ class NavigationTest {
     @Test
     @DisplayName("悬浮＋只在明细页出现（D9）")
     fun fabOnlyOnLedger() {
-        assertTrue(MainChrome.showFab(Routes.LEDGER))
-        assertFalse(MainChrome.showFab(Routes.REPORT), "报表页有底栏但不应有 ＋")
-        assertFalse(MainChrome.showFab(Routes.ACCOUNTS), "账户页有底栏但不应有 ＋")
+        assertTrue(MainChrome.showFab(Routes.MAIN, MainTab.LEDGER))
+        assertFalse(MainChrome.showFab(Routes.MAIN, MainTab.REPORT), "报表页有底栏但不应有 ＋")
+        assertFalse(MainChrome.showFab(Routes.MAIN, MainTab.ACCOUNTS), "账户页有底栏但不应有 ＋")
         assertFalse(MainChrome.showFab(null), "路由未知时一律不显示")
+        assertFalse(MainChrome.showFab(Routes.SETTINGS, MainTab.LEDGER), "二级页不该有 ＋")
     }
 
     @Test
@@ -91,11 +116,10 @@ class NavigationTest {
         assertFalse(MainChrome.showBottomBar(Routes.ASSET_REPORT))
     }
 
-    @ParameterizedTest
-    @ValueSource(strings = ["ledger", "report", "accounts"])
-    @DisplayName("三个主 Tab 都不是二级页，底栏不会消失（v1.8.1 回归）")
-    fun mainTabsAreNotDetail(route: String) {
-        assertFalse(MainChrome.isDetail(route), "$route 是主 Tab，若判成二级页底栏会整条消失")
+    @Test
+    @DisplayName("主框架页不是二级页，底栏不会消失（v1.8.1 回归）")
+    fun mainTabIsNotDetail() {
+        assertFalse(MainChrome.isDetail(Routes.MAIN), "main 是主 Tab，若判成二级页底栏会整条消失")
     }
 
     @Test
@@ -103,7 +127,7 @@ class NavigationTest {
     fun isDetailIsComplementOfBottomBar() {
         val samples =
             listOf(
-                Routes.LEDGER, Routes.REPORT, Routes.ACCOUNTS,
+                Routes.MAIN,
                 Routes.SEARCH, Routes.CALENDAR, Routes.TEMPLATES, Routes.SETTINGS,
                 Routes.BACKUP, Routes.TRASH, Routes.ASSET_REPORT,
                 Routes.REIMBURSEMENT, Routes.ONBOARDING, null, "",

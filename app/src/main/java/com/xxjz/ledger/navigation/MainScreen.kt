@@ -36,18 +36,21 @@ import androidx.compose.ui.unit.dp
  *
  * v1.7.0 的「中央凸起＋」已经去掉：按新设计，「＋」是**明细页右下角的悬浮按钮**（D9），
  * 压在内容之上而不是嵌进底栏，所以这里不再需要 Box 叠 diag 的那套套路。
+ *
+ * v1.9.5 第 2 条起，底栏的高亮由 [currentTab] 决定而不是路由：三个 Tab 已经是同一个
+ * 目的地里的三页，路由区分不出来了。
  */
 @Composable
 fun MainScreen(
-    currentRoute: String?,
+    currentTab: MainTab,
     onSelectTab: (MainTab) -> Unit,
-    showBottomBar: Boolean = MainChrome.showBottomBar(currentRoute),
+    showBottomBar: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                XxjzBottomBar(currentRoute = currentRoute, onSelect = onSelectTab)
+                XxjzBottomBar(currentTab = currentTab, onSelect = onSelectTab)
             }
         },
     ) { padding ->
@@ -64,13 +67,13 @@ fun MainScreen(
  */
 @Composable
 fun XxjzBottomBar(
-    currentRoute: String?,
+    currentTab: MainTab,
     onSelect: (MainTab) -> Unit,
 ) {
     Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
         NavigationBar {
             MainTab.entries.forEach { tab ->
-                val selected = currentRoute == tab.route
+                val selected = currentTab == tab
                 // 选中轻微放大：纯图标导航少了文字锚点，这点动效就是最重要的位置提示
                 val scale by animateFloatAsState(
                     targetValue = if (selected) 1.1f else 0.96f,
@@ -101,7 +104,7 @@ fun XxjzBottomBar(
                             unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         ),
-                    modifier = Modifier.testTag("tab_${tab.route}"),
+                    modifier = Modifier.testTag("tab_${tab.key}"),
                 )
             }
         }

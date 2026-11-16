@@ -7,7 +7,6 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.xxjz.ledger.feature.account.AccountDetailScreen
-import com.xxjz.ledger.feature.account.AccountListScreen
 import com.xxjz.ledger.feature.backup.BackupScreen
 import com.xxjz.ledger.feature.budget.BudgetEditScreen
 import com.xxjz.ledger.feature.budget.BudgetScreen
@@ -17,8 +16,6 @@ import com.xxjz.ledger.feature.detail.TxnDetailScreen
 import com.xxjz.ledger.feature.editor.EditorScreen
 import com.xxjz.ledger.feature.editor.EditorViewModel
 import com.xxjz.ledger.feature.export.CsvExportScreen
-import com.xxjz.ledger.feature.ledger.LedgerNav
-import com.xxjz.ledger.feature.ledger.LedgerScreen
 import com.xxjz.ledger.feature.mine.MineScreen
 import com.xxjz.ledger.feature.onboarding.OnboardingScreen
 import com.xxjz.ledger.feature.recurring.RecurringEditScreen
@@ -26,7 +23,6 @@ import com.xxjz.ledger.feature.recurring.RecurringListScreen
 import com.xxjz.ledger.feature.reimbursement.ReimbursementScreen
 import com.xxjz.ledger.feature.report.AssetReportScreen
 import com.xxjz.ledger.feature.report.CategoryDrillScreen
-import com.xxjz.ledger.feature.report.ReportScreen
 import com.xxjz.ledger.feature.report.YearSummaryScreen
 import com.xxjz.ledger.feature.search.SearchScreen
 import com.xxjz.ledger.feature.settings.SettingsScreen
@@ -45,13 +41,15 @@ import com.xxjz.ledger.feature.trash.TrashScreen
  */
 internal fun NavGraphBuilder.appNavGraph(
     navController: NavHostController,
+    tabs: TabController,
+    onOpenTab: (MainTab) -> Unit,
     onMenuClick: () -> Unit = {},
     onAdd: () -> Unit = {},
 ) {
     composable(Routes.ONBOARDING) {
         OnboardingScreen(
             onDone = {
-                navController.navigate(Routes.LEDGER) {
+                navController.navigate(Routes.MAIN) {
                     popUpTo(Routes.ONBOARDING) { inclusive = true }
                 }
             },
@@ -82,25 +80,8 @@ internal fun NavGraphBuilder.appNavGraph(
             onOpenTemplates = { navController.navigate(Routes.TEMPLATES) },
         )
     }
-    composable(Routes.LEDGER) {
-        LedgerScreen(
-            nav =
-                LedgerNav(
-                    onAdd = { navController.navigate(Routes.editor()) },
-                    onOpenTxn = { id -> navController.navigate(Routes.txnDetail(id)) },
-                    onEditTxn = { id -> navController.navigate(Routes.editor(txnId = id)) },
-                    onOpenAccount = { id -> navController.navigate(Routes.accountDetail(id)) },
-                    onOpenRecurring = { navController.navigate(Routes.RECURRING) },
-                    onOpenSplit = { id -> navController.navigate(Routes.split(id)) },
-                    onUseTemplate = { id -> navController.navigate(Routes.editor(templateId = id)) },
-                    onOpenSearch = { navController.navigate(Routes.SEARCH) },
-                    onOpenCalendar = { navController.navigate(Routes.CALENDAR) },
-                    onOpenBudget = { navController.navigate(Routes.BUDGET) },
-                    onMenu = onMenuClick,
-                    onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
-                ),
-        )
-    }
+    // 明细 / 报表 / 账户三页合住在 Routes.MAIN，由 MainTabsPager 承载（v1.9.5 第 2 条）
+    mainTabsRoute(navController = navController, tabs = tabs, onMenuClick = onMenuClick)
     composable(
         route = Routes.TXN_DETAIL,
         arguments = listOf(navArgument(Routes.ARG_TXN_ID) { type = NavType.StringType }),
@@ -115,16 +96,6 @@ internal fun NavGraphBuilder.appNavGraph(
         TemplateListScreen(
             onBack = { navController.popBackStack() },
             onUse = { id -> navController.navigate(Routes.editor(templateId = id)) },
-        )
-    }
-    composable(Routes.ACCOUNTS) {
-        AccountListScreen(
-            onBack = { navController.popBackStack() },
-            onOpen = { id -> navController.navigate(Routes.accountDetail(id)) },
-            onOpenAssetReport = { navController.navigate(Routes.ASSET_REPORT) },
-            onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },
-            onMenu = onMenuClick,
-            isRootTab = true,
         )
     }
     composable(Routes.ASSET_REPORT) {
@@ -151,13 +122,6 @@ internal fun NavGraphBuilder.appNavGraph(
     }
     composable(Routes.CALENDAR) {
         CalendarScreen(onBack = { navController.popBackStack() })
-    }
-    composable(Routes.REPORT) {
-        ReportScreen(
-            onDrill = { id -> navController.navigate(Routes.categoryDrill(id)) },
-            onYearSummary = { navController.navigate(Routes.YEAR_SUMMARY) },
-            onMenu = onMenuClick,
-        )
     }
     composable(
         route = Routes.CATEGORY_DRILL,
@@ -231,7 +195,7 @@ internal fun NavGraphBuilder.appNavGraph(
     }
     composable(Routes.MINE) {
         MineScreen(
-            onOpenAccounts = { navController.navigate(Routes.ACCOUNTS) },
+            onOpenAccounts = { onOpenTab(MainTab.ACCOUNTS) },
             onOpenTemplates = { navController.navigate(Routes.TEMPLATES) },
             onOpenRecurring = { navController.navigate(Routes.RECURRING) },
             onOpenReimbursement = { navController.navigate(Routes.REIMBURSEMENT) },

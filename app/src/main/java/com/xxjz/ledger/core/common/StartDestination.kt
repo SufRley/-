@@ -17,13 +17,18 @@ object StartDestination {
         shortcut: ShortcutAction? = null,
     ): String =
         when {
-            shortcut != null -> ROUTE_LEDGER
-            onboardingDone -> ROUTE_LEDGER
+            shortcut != null -> ROUTE_MAIN
+            onboardingDone -> ROUTE_MAIN
             else -> ROUTE_ONBOARDING
         }
 
-    /** 与 [com.xxjz.ledger.navigation.Routes] 保持同值；这里不引用它避免 core 反向依赖 navigation。 */
-    const val ROUTE_LEDGER = "ledger"
+    /**
+     * 与 [com.xxjz.ledger.navigation.Routes] 保持同值；这里不引用它避免 core 反向依赖 navigation。
+     *
+     * v1.9.5 第 2 条之后不再有 `ledger` 这个目的地：三个 Tab 合住在 `main`，
+     * 落到主框架即等于落到明细页（[com.xxjz.ledger.navigation.TabController] 的初始值）。
+     */
+    const val ROUTE_MAIN = "main"
     const val ROUTE_ONBOARDING = "onboarding"
 }
 

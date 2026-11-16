@@ -27,7 +27,7 @@ class StartDestinationTest {
     @Test
     @DisplayName("引导过 → 直接进明细")
     fun secondLaunchGoesLedger() {
-        assertEquals(StartDestination.ROUTE_LEDGER, StartDestination.decide(onboardingDone = true))
+        assertEquals(StartDestination.ROUTE_MAIN, StartDestination.decide(onboardingDone = true))
     }
 
     @Test
@@ -35,7 +35,7 @@ class StartDestinationTest {
     fun shortcutBypassesOnboarding() {
         listOf(ShortcutAction.NEW_EXPENSE, ShortcutAction.OPEN_REPORT, ShortcutAction.OPEN_SEARCH).forEach { action ->
             assertEquals(
-                StartDestination.ROUTE_LEDGER,
+                StartDestination.ROUTE_MAIN,
                 StartDestination.decide(onboardingDone = false, shortcut = action),
                 "快捷方式 $action 不该被引导拦住",
             )
@@ -45,7 +45,7 @@ class StartDestinationTest {
     @Test
     @DisplayName("路由常量与 Routes 保持一致，防止两边改名后静默错位")
     fun routeConstantsMatchRoutes() {
-        assertEquals(com.xxjz.ledger.navigation.Routes.LEDGER, StartDestination.ROUTE_LEDGER)
+        assertEquals(com.xxjz.ledger.navigation.Routes.MAIN, StartDestination.ROUTE_MAIN)
         assertEquals(com.xxjz.ledger.navigation.Routes.ONBOARDING, StartDestination.ROUTE_ONBOARDING)
     }
 

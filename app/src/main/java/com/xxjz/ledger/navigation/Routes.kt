@@ -2,12 +2,18 @@ package com.xxjz.ledger.navigation
 
 /** 主 Tab 路由。 */
 object Routes {
-    const val LEDGER = "ledger"
-    const val REPORT = "report"
+    /**
+     * 主框架：三个 Tab 合住的唯一目的地（v1.9.5 第 2 条）。
+     *
+     * 以前明细 / 报表 / 账户是三个独立路由，横滑切页只能靠 `navigate` 实现。那条路走不通：
+     * 每次换页都会压一个新目的地、重建一次 `NavBackStackEntry`，连带把 ViewModel 也重建，
+     * 滑过去先闪一下空页再填数据——比不能滑更难受。合并成一个目的地之后，Tab 只是 pager 的
+     * 页下标，切页不碰导航栈，三个 ViewModel 也都留在同一个 entry 里不重建。
+     */
+    const val MAIN = "main"
+
     const val BUDGET = "budget"
     const val MINE = "mine"
-
-    const val MAIN = "main"
 
     /** 流水详情 P02。 */
     const val TXN_DETAIL = "txn/{txnId}"
@@ -97,14 +103,27 @@ object Routes {
  *
  * 「预算」下沉为明细页底部的概览卡，「我的」取消、内容并入左上角 ☰ 抽屉；
  * 两者的独立路由仍然保留，只是不再占据 Tab 位。
+ *
+ * v1.9.5 起 [key] 不再是导航目的地（三页合住在 [Routes.MAIN]），而是 Tab 的稳定标识：
+ * 底栏高亮、testTag、横滑下标换算都以它为准。之所以不改名成 `id`，是因为它出现在
+ * 保存态与 testTag 里，改名要连带改动一串地方，收益只有「名字更准」这一点。
  */
 enum class MainTab(
-    val route: String,
+    val key: String,
     val label: String,
 ) {
-    LEDGER(Routes.LEDGER, "明细"),
-    REPORT(Routes.REPORT, "报表"),
-    ACCOUNTS(Routes.ACCOUNTS, "账户"),
+    LEDGER("ledger", "明细"),
+    REPORT("report", "报表"),
+    ACCOUNTS("accounts", "账户"),
+    ;
+
+    companion object {
+        /** 页下标 → Tab；越界时夹回末页，宁可停在某一页也不要崩。 */
+        fun ofIndex(index: Int): MainTab = entries[index.coerceIn(0, entries.lastIndex)]
+
+        /** 保存态 / 路由参数 → Tab；认不出来返回 null，由调用方决定兜底到哪一页。 */
+        fun ofKey(key: String?): MainTab? = entries.firstOrNull { it.key == key }
+    }
 }
 
 /** 抽屉里的七项（PRD D11），顺序即展示顺序。 */
@@ -122,4 +141,4 @@ enum class DrawerEntry(
 }
 
 /** 主 Tab 页的路由集合：只有这些页面显示底部栏、左上角 ☰ 与悬浮「＋」。 */
-val MAIN_TAB_ROUTES: Set<String> = MainTab.entries.map { it.route }.toSet()
+val MAIN_TAB_ROUTES: Set<String> = setOf(Routes.MAIN)
