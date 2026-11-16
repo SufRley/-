@@ -1,5 +1,6 @@
 package com.xxjz.ledger.feature.ledger
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -109,6 +110,11 @@ fun LedgerScreen(
     var selectedIds by remember { mutableStateOf(emptySet<String>()) }
 
     LaunchedEffect(Unit) { viewModel.messages.collect { snackbar.showSnackbar(it) } }
+
+    BatchBackHandler(enabled = selecting) {
+        selecting = false
+        selectedIds = emptySet()
+    }
 
     if (showMonthPicker) {
         MonthPickerDialog(
@@ -259,6 +265,23 @@ fun LedgerScreen(
         }
         SnackbarHost(hostState = snackbar, modifier = Modifier.align(Alignment.BottomCenter))
     }
+}
+
+/**
+ * 批量模式的返回键处理（v1.9.5 第 10 条）。
+ *
+ * 批量模式不是一个新页面，只是明细页上的一种状态，所以系统返回不会自己退出它——
+ * 上一版没挂这个处理，用户勾了三笔账一按返回，整个人直接回到桌面，勾选白做。
+ *
+ * 抽成独立函数是为了让单测能直接对着它按返回，
+ * 不必先长按、再等底部弹层、再点「批量操作」绕一大圈。
+ */
+@Composable
+internal fun BatchBackHandler(
+    enabled: Boolean,
+    onExit: () -> Unit,
+) {
+    BackHandler(enabled = enabled, onBack = onExit)
 }
 
 @Composable
