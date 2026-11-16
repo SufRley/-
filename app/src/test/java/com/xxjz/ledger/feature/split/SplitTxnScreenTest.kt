@@ -1,11 +1,15 @@
 package com.xxjz.ledger.feature.split
 
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
 import androidx.lifecycle.SavedStateHandle
 import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.designsystem.theme.XxjzTheme
@@ -162,5 +166,36 @@ class SplitTxnScreenTest {
 
         compose.onNodeWithTag("confirm_dialog").assertDoesNotExist()
         assertTrue(backed)
+    }
+
+    @Test
+    fun `两个金额框来回点四次，每次都能切过去`() {
+        val vm = viewModel()
+        render(vm)
+
+        // AC-3.1：上一版 52dp 强压时，点多了之后某个框会彻底点不动
+        repeat(2) {
+            compose.onNodeWithTag("split_amount_0").performTouchInput { click(Offset(centerX, 2f)) }
+            compose.onNodeWithTag("split_amount_0").assertIsFocused()
+
+            compose.onNodeWithTag("split_amount_1").performTouchInput { click(Offset(centerX, 2f)) }
+            compose.onNodeWithTag("split_amount_1").assertIsFocused()
+        }
+    }
+
+    @Test
+    fun `填第二行后原账户自动让出余额`() {
+        val vm = viewModel()
+        render(vm)
+
+        vm.setAccount(vm.state.value.rows[1].key, "b")
+        compose.waitForIdle()
+        compose.onNodeWithTag("split_amount_1").performTextReplacement("100")
+        compose.waitForIdle()
+
+        assertTrue(
+            "原账户应自动变 200，实际 ${vm.state.value.rows[0].amountText}",
+            vm.state.value.rows[0].amountText == "200",
+        )
     }
 }

@@ -29,6 +29,13 @@ data class SplitRow(
     val key: String,
     val accountId: String? = null,
     val amountText: String = "",
+    /**
+     * 是否是「原账户那一行」（v1.9.6 第 3 条）。
+     *
+     * 它同时是**余数承接者**：用户改别的行时，这一行自动让出金额。
+     * 用标记而不是「第一行」来判断，是因为删行、加行之后位置会变。
+     */
+    val isSource: Boolean = false,
 ) {
     val cents: Long get() = MoneyFormatter.yuanToCents(amountText) ?: 0L
 }
@@ -45,6 +52,14 @@ data class SplitUiState(
     val error: String? = null,
     /** 用户是否动过明细，用于返回时的放弃确认。 */
     val dirty: Boolean = false,
+    /**
+     * 是否仍由原账户行自动承接余数（v1.9.6 第 3 条）。
+     *
+     * 用户一旦手动改过原账户行，就交出手动控制权：此后所有行都按手填的值算，
+     * 只做差额提示，不再自动覆盖。否则用户改完原账户、再去填第二行，原账户又被改回去，
+     * 看起来像「我的输入被吃掉了」。
+     */
+    val autoBalance: Boolean = true,
 ) {
     val sourceCents: Long get() = source?.amount ?: 0L
 
@@ -69,9 +84,12 @@ data class SplitUiState(
                 source == null -> "原账目不存在"
                 rows.size < SplitTxnUseCase.MIN_PARTS -> "至少要两条明细"
                 rows.any { it.accountId == null } -> "每条明细都要选账户"
-                rows.any { it.cents <= 0L } -> "每条明细的金额都要大于 0"
+                // 差额优先于「金额大于 0」：其他行填多了会把原账户行压成 0，
+                // 这时用户该看到的是「超出多少」，而不是「有一条是 0」——
+                // 后者是他填出来的结果，前者才是需要他改的事
                 diffCents > 0 -> "超出 ¥${MoneyFormatter.centsToYuan(diffCents)}"
                 diffCents < 0 -> "还差 ¥${MoneyFormatter.centsToYuan(-diffCents)}"
+                rows.any { it.cents <= 0L } -> "每条明细的金额都要大于 0"
                 else -> null
             }
 }
@@ -126,7 +144,11 @@ class SplitTxnViewModel
                         categoryName = category.orEmpty(),
                         rows =
                             listOf(
-                                newRow(txn.accountId, MoneyFormatter.centsToPlain(txn.amount)),
+                                newRow(
+                                    accountId = txn.accountId,
+                                    amount = MoneyFormatter.centsToPlain(txn.amount),
+                                    isSource = true,
+                                ),
                                 newRow(null, ""),
                             ),
                     )
@@ -137,9 +159,10 @@ class SplitTxnViewModel
         private fun newRow(
             accountId: String?,
             amount: String,
+            isSource: Boolean = false,
         ): SplitRow {
             seq += 1
-            return SplitRow(key = "row_$seq", accountId = accountId, amountText = amount)
+            return SplitRow(key = "row_$seq", accountId = accountId, amountText = amount, isSource = isSource)
         }
 
         fun addRow() {
@@ -149,7 +172,16 @@ class SplitTxnViewModel
 
         fun removeRow(key: String) {
             if (!state.value.canRemove) return
-            _state.update { it.copy(rows = it.rows.filterNot { row -> row.key == key }, error = null, dirty = true) }
+            _state.update { current ->
+                val rest = current.rows.filterNot { row -> row.key == key }
+                current.copy(
+                    rows = rest,
+                    // 原账户行被删掉之后就没有「余数承接者」了，退回纯手工
+                    autoBalance = current.autoBalance && rest.any { it.isSource },
+                    error = null,
+                    dirty = true,
+                )
+            }
         }
 
         fun setAccount(
@@ -163,17 +195,46 @@ class SplitTxnViewModel
             )
         }
 
+        /**
+         * 改某一行金额。
+         *
+         * 改的是**别的**行时，原账户行自动变成「原额 − 其他行合计」——用户只需要填新增的那一行，
+         * 不用自己心算余数（v1.9.6 第 3 条）。改原账户行自己不联动，否则就是自己覆盖自己；
+         * 此时合计对不上，底部照旧提示「还差 / 超出」。
+         */
         fun setAmount(
             key: String,
             text: String,
         ) {
             val filtered = text.filter { it.isDigit() || it == '.' }.take(12)
             _state.update { current ->
+                val edited = current.rows.map { if (it.key == key) it.copy(amountText = filtered) else it }
+                val editedSource = current.rows.firstOrNull { it.isSource }?.key == key
                 current.copy(
-                    rows = current.rows.map { if (it.key == key) it.copy(amountText = filtered) else it },
+                    rows = if (current.autoBalance && !editedSource) rebalance(edited, current.sourceCents) else edited,
+                    // 手动改原账户 = 接管：之后不再自动重算，免得把用户刚填的数覆盖掉
+                    autoBalance = current.autoBalance && !editedSource,
                     error = null,
                     dirty = true,
                 )
+            }
+        }
+
+        /**
+         * 让原账户行承接余数。
+         *
+         * 其他行合计超过原额时显示 `0.00` 而不是负数：负金额没有意义，超出的部分
+         * 由底部「超出 ¥X」提示与保存校验兜底。
+         */
+        private fun rebalance(
+            rows: List<SplitRow>,
+            sourceCents: Long,
+        ): List<SplitRow> {
+            if (rows.none { it.isSource }) return rows
+            val others = rows.filterNot { it.isSource }.sumOf { it.cents }
+            val rest = (sourceCents - others).coerceAtLeast(0L)
+            return rows.map { row ->
+                if (row.isSource) row.copy(amountText = MoneyFormatter.centsToPlain(rest)) else row
             }
         }
 

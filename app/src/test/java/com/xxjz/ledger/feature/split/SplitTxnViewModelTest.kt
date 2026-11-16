@@ -111,15 +111,18 @@ class SplitTxnViewModelTest {
         }
 
     @Test
-    fun `合计超出时提示超出多少`() =
+    fun `其他行超出原额时原账户归零而不是负数`() =
         runTest(dispatcher.scheduler) {
             val vm = viewModel()
             advanceUntilIdle()
             val key = vm.state.value.rows[1].key
             vm.setAccount(key, "b")
-            vm.setAmount(key, "200")
+            vm.setAmount(key, "400")
 
-            assertEquals("超出 ¥200.00", vm.state.value.blocker)
+            val state = vm.state.value
+            assertEquals(0L, state.rows[0].cents, "负数金额没有意义，超出部分交给提示")
+            assertEquals("0", state.rows[0].amountText)
+            assertEquals("超出 ¥100.00", state.blocker)
         }
 
     @Test
@@ -196,5 +199,89 @@ class SplitTxnViewModelTest {
             vm.removeRow(vm.state.value.rows[0].key)
 
             assertEquals(2, vm.state.value.rows.size, "已经是两条，再删就不成拆分了")
+        }
+
+    // ---------- 原账户自动跟随（v1.9.6 第 3 条） ----------
+
+    @Test
+    fun `填第二行 30 时原账户自动让出 70`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            val key = vm.state.value.rows[1].key
+            vm.setAccount(key, "b")
+            vm.setAmount(key, "30")
+
+            val state = vm.state.value
+            assertEquals("270", state.rows[0].amountText, "原额 300，第二行 30，余 270")
+            assertEquals(30_000L, state.totalCents)
+            assertNull(state.blocker)
+        }
+
+    @Test
+    fun `第二行改 60 时原账户跟着变 40`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            val key = vm.state.value.rows[1].key
+            vm.setAccount(key, "b")
+            vm.setAmount(key, "30")
+            vm.setAmount(key, "60")
+
+            assertEquals("240", vm.state.value.rows[0].amountText)
+        }
+
+    @Test
+    fun `手动改原账户后不再被自动覆盖`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setAmount(vm.state.value.rows[0].key, "200")
+            val key = vm.state.value.rows[1].key
+            vm.setAccount(key, "b")
+            vm.setAmount(key, "50")
+
+            val state = vm.state.value
+            assertEquals("200", state.rows[0].amountText, "用户填的 200 不能被联动改回去")
+            assertEquals("还差 ¥50.00", state.blocker)
+            assertFalse(state.autoBalance)
+        }
+
+    @Test
+    fun `三行拆分时原账户承接剩余`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.addRow()
+            val second = vm.state.value.rows[1].key
+            val third = vm.state.value.rows[2].key
+            vm.setAccount(second, "b")
+            vm.setAccount(third, "a")
+            vm.setAmount(second, "30")
+            vm.setAmount(third, "20")
+
+            val state = vm.state.value
+            assertEquals("250", state.rows[0].amountText, "300 − 30 − 20")
+            assertEquals(30_000L, state.totalCents)
+            assertNull(state.blocker)
+        }
+
+    @Test
+    fun `删掉原账户行后各填各的，只提示差额`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            // 先加一行，才能删掉原账户行（至少要留两条）
+            vm.addRow()
+            vm.removeRow(vm.state.value.rows[0].key)
+
+            vm.state.value.rows.forEachIndexed { index, row ->
+                vm.setAccount(row.key, if (index == 0) "a" else "b")
+            }
+
+            val state = vm.state.value
+            assertFalse(state.autoBalance, "没有原账户行了，无从联动")
+            assertEquals(2, state.rows.size)
+            assertEquals("还差 ¥300.00", state.blocker)
         }
 }
