@@ -623,40 +623,41 @@ class EditorViewModelTest {
             assertEquals("acc-2", settings.value.lastPayAccountId)
         }
 
-    // ---------- v1.9.4 第 3 条：组合支付「⇄」连点 ----------
+    // ---------- v1.9.5 第 1 条：付款方式两段式 ----------
 
     @Test
-    fun `连点两次组合开关是一开一关`() =
+    fun `连点组合支付四次仍停在组合`() =
         runTest(dispatcher.scheduler) {
             val vm = viewModel()
             advanceUntilIdle()
             assertFalse(vm.state.value.splitMode)
 
-            vm.toggleSplitMode()
-            assertTrue(vm.state.value.splitMode, "第一次点：开")
-            vm.toggleSplitMode()
-            assertFalse(vm.state.value.splitMode, "第二次点：关。以前这里会两次都读同一个快照，连点无效")
-        }
-
-    @Test
-    fun `连点三次落在开`() =
-        runTest(dispatcher.scheduler) {
-            val vm = viewModel()
-            advanceUntilIdle()
-            repeat(3) { vm.toggleSplitMode() }
+            // 旧实现是「翻转」：连点两下等于开→关，用户看到的就是点了没反应。
+            // 现在点的是同一个二态分段，重复点同一段不该改变结果。
+            repeat(4) { vm.setSplitMode(true) }
             assertTrue(vm.state.value.splitMode)
         }
 
     @Test
-    fun `连点四次回到单选且分摊为空`() =
+    fun `连点单账户四次仍停在单账户`() =
         runTest(dispatcher.scheduler) {
             val vm = viewModel()
             advanceUntilIdle()
-            vm.toggleSplitMode()
+            vm.setSplitMode(true)
+            repeat(4) { vm.setSplitMode(false) }
+            assertFalse(vm.state.value.splitMode)
+        }
+
+    @Test
+    fun `切回单账户会清空分摊`() =
+        runTest(dispatcher.scheduler) {
+            val vm = viewModel()
+            advanceUntilIdle()
+            vm.setSplitMode(true)
             vm.setSplitAmount("acc-1", "30")
             assertEquals(3000L, vm.state.value.splitTotal)
 
-            repeat(3) { vm.toggleSplitMode() }
+            vm.setSplitMode(false)
             assertFalse(vm.state.value.splitMode)
             assertTrue(vm.state.value.splits.isEmpty(), "关掉组合必须清空分摊，否则金额会在单选模式下悄悄生效")
         }
@@ -666,10 +667,10 @@ class EditorViewModelTest {
         runTest(dispatcher.scheduler) {
             val vm = viewModel()
             advanceUntilIdle()
-            vm.toggleSplitMode()
+            vm.setSplitMode(true)
             vm.setSplitAmount("acc-1", "30")
-            vm.toggleSplitMode()
-            vm.toggleSplitMode()
+            vm.setSplitMode(false)
+            vm.setSplitMode(true)
 
             assertTrue(vm.state.value.splitMode)
             assertTrue(vm.state.value.splits.isEmpty(), "重新打开组合应该从空白开始")

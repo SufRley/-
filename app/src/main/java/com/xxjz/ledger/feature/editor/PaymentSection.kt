@@ -1,7 +1,9 @@
 package com.xxjz.ledger.feature.editor
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -32,6 +34,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -88,33 +92,29 @@ internal fun PaymentSection(
             Spacer(Modifier.height(2.dp))
         }
 
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AccountLine(
-                label = if (state.type == TxnType.DEBT) "资金账户" else "付款账户",
-                value = state.accountName,
-                placeholder =
-                    when (state.type) {
-                        TxnType.TRANSFER -> "选择转出账户"
-                        TxnType.DEBT -> "选择资金账户"
-                        else -> "请选择"
-                    },
-                tag = "row_account",
-                onClick = onPickAccount,
-                modifier = Modifier.weight(1f),
-                icon = accountGlyphOf(state.accounts.firstOrNull { it.id == state.accountId }?.type),
-                trailing =
-                    if (splitAvailable) {
-                        {
-                            SplitModeButton(
-                                split = state.splitMode,
-                                count = state.splits.size,
-                                // 传动作而不是传算好的布尔值：连点时第二个回调也读不到新的 state（v1.9.4 第 3 条）
-                                onToggle = viewModel::toggleSplitMode,
-                            )
-                        }
-                    } else {
-                        null
-                    },
+        AccountLine(
+            label = if (state.type == TxnType.DEBT) "资金账户" else "付款账户",
+            value = state.accountName,
+            placeholder =
+                when (state.type) {
+                    TxnType.TRANSFER -> "选择转出账户"
+                    TxnType.DEBT -> "选择资金账户"
+                    else -> "请选择"
+                },
+            tag = "row_account",
+            onClick = onPickAccount,
+            icon = accountGlyphOf(state.accounts.firstOrNull { it.id == state.accountId }?.type),
+        )
+
+        // 组合支付改成常驻的一行两段（v1.9.5 第 1 条）。
+        // 原来是一个 20dp 的 ⇄ 图标：连点两下的真实效果是「开 → 关」，看起来就像点了没反应；
+        // 图标又没有按钮底，用户连自己点没点中都判断不了。分段控件把「现在是什么」直接摆出来。
+        if (splitAvailable) {
+            Spacer(Modifier.height(4.dp))
+            SplitModeSelector(
+                split = state.splitMode,
+                count = state.splits.size,
+                onSelect = viewModel::setSplitMode,
             )
         }
 
@@ -308,32 +308,77 @@ private fun AccountLine(
 }
 
 /**
- * 组合切换：一个 `SwapHoriz` 图标。
+ * 付款方式：单账户 / 组合支付，两段式（v1.9.5 第 1 条）。
  *
- * 图标按钮不抢眼但也不隐藏——旁边账户名后面会追加「等 N 个」，说明这个开关现在是什么状态。
+ * 显式二态而不是翻转：`setSplitMode(true/false)` 让「点这一段就该是这个状态」成立，
+ * 连点同一段不会把状态翻回去。已填分摊时右侧补一句「已选 N 个」，面板收起也看得见。
  */
 @Composable
-private fun SplitModeButton(
+private fun SplitModeSelector(
     split: Boolean,
     count: Int,
-    onToggle: () -> Unit,
+    onSelect: (Boolean) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (split && count > 0) {
-            Text(
-                text = "等 $count 个",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier = Modifier.fillMaxWidth().height(48.dp).testTag("split_selector"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "付款方式",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.weight(1f))
+        Row(
+            modifier =
+                Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            SegmentChip(
+                label = "单账户",
+                selected = !split,
+                tag = "split_mode_single",
+                onClick = { onSelect(false) },
+            )
+            SegmentChip(
+                label = if (split && count > 0) "组合 · $count" else "组合支付",
+                selected = split,
+                tag = "split_mode_split",
+                onClick = { onSelect(true) },
             )
         }
-        IconButton(onClick = onToggle, modifier = Modifier.size(36.dp).testTag("split_switch")) {
-            Icon(
-                imageVector = Icons.Filled.SwapHoriz,
-                contentDescription = if (split) "改为单账户支付" else "改为组合支付",
-                modifier = Modifier.size(20.dp),
-                tint =
-                    if (split) {
-                        MaterialTheme.colorScheme.primary
+    }
+}
+
+/** 分段里的一枚：选中铺主色，未选中透明，两边都保证 44dp 以上的点击高度。 */
+@Composable
+private fun SegmentChip(
+    label: String,
+    selected: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color =
+            if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                Color.Transparent
+            },
+        modifier = Modifier.height(38.dp).testTag(tag),
+    ) {
+        Box(Modifier.padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.onPrimary
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },

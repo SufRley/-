@@ -665,25 +665,15 @@ class EditorViewModel
 
         // ---------- 组合支付 / 照片 / 标签（PRD v1.9.1 第 5 条） ----------
 
-        /** 切换单选 / 组合。切回单选时清空分摊，避免残留金额悄悄生效。 */
+        /**
+         * 切换单选 / 组合。切回单选时清空分摊，避免残留金额悄悄生效。
+         *
+         * v1.9.5 第 1 条起由两段式控件显式传 true / false，不再有「翻转」这个入口：
+         * 翻转的语义是「点一下变反」，而用户点的是具体那一段，重复点同段不该把状态翻回去。
+         */
         fun setSplitMode(on: Boolean) =
             _state.update {
                 it.copy(splitMode = on, splits = if (on) it.splits else emptyMap(), dirty = true)
-            }
-
-        /**
-         * 「⇄」图标的点击入口：基于**最新**状态翻转（v1.9.4 第 3 条）。
-         *
-         * 以前 UI 传的是 `!state.splitMode`——`state` 是那次重组捕获的快照，
-         * 连点两下时第二次仍绑在同一个快照上，算出的值与第一次一样，
-         * 于是 `setSplitMode(true)` 被连调两次，状态看起来「没反应」。
-         *
-         * 这里用 `update` 的 CAS 循环读最新值：无论点多快，两次点击必定一开一关。
-         */
-        fun toggleSplitMode() =
-            _state.update {
-                val next = !it.splitMode
-                it.copy(splitMode = next, splits = if (next) it.splits else emptyMap(), dirty = true)
             }
 
         /**
