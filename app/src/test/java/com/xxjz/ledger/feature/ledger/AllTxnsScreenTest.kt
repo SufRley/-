@@ -55,7 +55,8 @@ class AllTxnsScreenTest {
     private val accountRepo = FakeAccountRepository()
     private val settings = FakeSettingsDataStore()
 
-    private val today: LocalDate = LocalDate.of(2026, 11, 16)
+    // 用真实当天而非写死日期：组头「今天 / 昨天」由系统日期判定，写死会在跨天后失败。
+    private val today: LocalDate = LocalDate.now()
 
     @Before
     fun setUp() {
@@ -144,8 +145,9 @@ class AllTxnsScreenTest {
         setContent()
 
         compose.onNodeWithText("12:00", substring = true).assertExists()
-        // 有组头就不该在行里再写一遍「11-16 12:00」
-        compose.onAllNodesWithText("11-16 12:00", substring = true).assertCountEquals(0)
+        // 有组头就不该在行里再写一遍「MM-dd 12:00」
+        val mmdd = "%02d-%02d".format(today.monthValue, today.dayOfMonth)
+        compose.onAllNodesWithText("$mmdd 12:00", substring = true).assertCountEquals(0)
     }
 
     @Test

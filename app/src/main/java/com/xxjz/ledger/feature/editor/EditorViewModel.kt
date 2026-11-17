@@ -2,20 +2,11 @@ package com.xxjz.ledger.feature.editor
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.xxjz.ledger.core.common.AppResult
-import com.xxjz.ledger.core.common.DateUtils
 import com.xxjz.ledger.core.common.MoneyFormatter
-import com.xxjz.ledger.domain.model.Account
-import com.xxjz.ledger.domain.model.AccountType
-import com.xxjz.ledger.domain.model.BillCycleCalculator
 import com.xxjz.ledger.domain.model.Category
 import com.xxjz.ledger.domain.model.DebtAction
 import com.xxjz.ledger.domain.model.DebtDirection
-import com.xxjz.ledger.domain.model.DefaultTimeMode
-import com.xxjz.ledger.domain.model.Ids
-import com.xxjz.ledger.domain.model.Installment
 import com.xxjz.ledger.domain.model.InstallmentSchedule
-import com.xxjz.ledger.domain.model.InstallmentScope
 import com.xxjz.ledger.domain.model.Tag
 import com.xxjz.ledger.domain.model.TxnType
 import com.xxjz.ledger.domain.repository.AccountRepository
@@ -26,13 +17,10 @@ import com.xxjz.ledger.domain.repository.SettingsRepository
 import com.xxjz.ledger.domain.repository.TagRepository
 import com.xxjz.ledger.domain.repository.TemplateRepository
 import com.xxjz.ledger.domain.repository.TxnRepository
-import com.xxjz.ledger.domain.usecase.DebtAccountDraft
-import com.xxjz.ledger.domain.usecase.DebtOpDraft
 import com.xxjz.ledger.domain.usecase.RecordDebtOpUseCase
 import com.xxjz.ledger.domain.usecase.RefundTxnUseCase
 import com.xxjz.ledger.domain.usecase.SaveDebtAccountUseCase
 import com.xxjz.ledger.domain.usecase.SaveTxnUseCase
-import com.xxjz.ledger.domain.usecase.TxnDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,31 +30,14 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalTime
 import javax.inject.Inject
-
-/** 商家抽屉一次拉多少个候选。够滑两屏，再多就变成「翻通讯录」了。 */
-private const val MERCHANT_SUGGEST_LIMIT = 60
-
-/** 从设置里读回来的「上次用的」，新建时按它预选（v1.9.3 第 2 条）。 */
-private data class EditorMemory(
-    val expenseCategoryId: String? = null,
-    val incomeCategoryId: String? = null,
-    val payAccountId: String? = null,
-    val defaultAccountId: String? = null,
-) {
-    fun categoryOf(type: TxnType): String? =
-        when (type) {
-            TxnType.EXPENSE -> expenseCategoryId
-            TxnType.INCOME -> incomeCategoryId
-            TxnType.TRANSFER, TxnType.DEBT -> null
-        }
-}
 
 /**
  * 记账面板 ViewModel：新建 / 编辑共用，靠 [loadForEdit] 区分。
  *
- * 状态定义与派生属性见 [EditorUiState]（独立文件）。
+ * 状态定义与派生属性见 [EditorUiState]；预选记忆见 [EditorMemoryDelegate]；
+ * 提交保存见 [EditorSubmitDelegate]；三者通过 [EditorRuntime] 共享同一份状态与依赖。
+ * 公开 API 与构造签名保持不变，UI 与测试无需改动。
  */
 @HiltViewModel
 class EditorViewModel
@@ -85,25 +56,31 @@ class EditorViewModel
         private val installmentRepository: InstallmentRepository,
         private val refundTxn: RefundTxnUseCase,
     ) : ViewModel() {
-        private val _state = MutableStateFlow(EditorUiState())
-        val state: StateFlow<EditorUiState> = _state.asStateFlow()
+        private val runtime =
+            EditorRuntime(
+                state = MutableStateFlow(EditorUiState()),
+                events = MutableSharedFlow(extraBufferCapacity = 4),
+                scope = viewModelScope,
+                txnRepository = txnRepository,
+                categoryRepository = categoryRepository,
+                accountRepository = accountRepository,
+                templateRepository = templateRepository,
+                saveTxn = saveTxn,
+                recordDebtOp = recordDebtOp,
+                saveDebtAccount = saveDebtAccount,
+                settings = settings,
+                tagRepository = tagRepository,
+                merchantRepository = merchantRepository,
+                installmentRepository = installmentRepository,
+                refundTxn = refundTxn,
+            )
+        private val _state get() = runtime.state
 
-        private val _events = MutableSharedFlow<EditorEvent>(extraBufferCapacity = 4)
-        val events: SharedFlow<EditorEvent> = _events.asSharedFlow()
+        val state: StateFlow<EditorUiState> = runtime.state.asStateFlow()
+        val events: SharedFlow<EditorEvent> = runtime.events.asSharedFlow()
 
-        /** 上次保存时用的值（v1.9.3 第 2 条），新建时用来预选。 */
-        private var memory: EditorMemory? = null
-
-        /**
-         * 本次页面生命周期内选过的分类，按类型分开记。
-         *
-         * 它比 [memory] 优先：用户刚在支出里点过「买菜」，切到收入再切回来，
-         * 期望看到的是「买菜」，而不是三天前存的「晚餐」。
-         */
-        private val sessionPicks = mutableMapOf<TxnType, String?>()
-
-        /** 本次页面内选过的付款账户，优先级高于持久化记忆。 */
-        private var sessionAccountId: String? = null
+        private val memoryDelegate = EditorMemoryDelegate(runtime)
+        private val submitDelegate = EditorSubmitDelegate(runtime, memoryDelegate)
 
         init {
             observeCategories()
@@ -111,100 +88,17 @@ class EditorViewModel
             observeTags()
             observeTemplates()
             refreshMerchants()
-            loadPreferences()
+            memoryDelegate.loadPreferences()
         }
 
-        /**
-         * 读一次设置：默认时间 + 记忆的分类/账户。
-         *
-         * 合并成一次 `settings.current()` 调用，别为了两个用途读两遍 DataStore。
-         */
-        private fun loadPreferences() {
-            viewModelScope.launch {
-                val snapshot = runCatching { settings.current() }.getOrNull() ?: return@launch
-                memory =
-                    EditorMemory(
-                        expenseCategoryId = snapshot.lastExpenseCategoryId,
-                        incomeCategoryId = snapshot.lastIncomeCategoryId,
-                        payAccountId = snapshot.lastPayAccountId,
-                        defaultAccountId = snapshot.defaultAccountId,
-                    )
-                if (snapshot.defaultTimeMode == DefaultTimeMode.FIXED) {
-                    val minutes = snapshot.fixedTimeMinutes
-                    val time = LocalTime.of(minutes / 60 % 24, minutes % 60)
-                    _state.update { it.copy(dateTime = DateUtils.toMillis(DateUtils.today(), time)) }
-                }
-                applyMemory()
-            }
-        }
+        /** 把记忆套到未动过的字段上——预选逻辑见 [EditorMemoryDelegate]。 */
+        private fun applyMemory() = memoryDelegate.applyMemory()
 
-        /**
-         * 把记忆套到「还没被用户动过」的字段上。
-         *
-         * 分类和账户是两条独立的 Flow，谁先到都得试一次，所以这个方法会被调用多次；
-         * 它只填空值，绝不覆盖用户已经选好的东西，也不覆盖编辑模式带进来的原值。
-         */
-        private fun applyMemory() {
-            val m = memory ?: return
-            _state.update { s ->
-                if (s.editingId != null) return@update s
-                s.copy(
-                    categoryId = s.categoryId ?: preferredCategory(s.categories, s.type),
-                    accountId = s.accountId ?: preferredAccount(s.accounts, m),
-                )
-            }
-        }
-
-        /**
-         * 分类优先级：本次会话选过的 → 持久化记忆 → 该类型里用得最多的。
-         *
-         * 最后那级兜底是为了「从没记过账的新用户」也有个合理默认，而不是空白。
-         */
+        /** 分类优先级——预选逻辑见 [EditorMemoryDelegate]。 */
         private fun preferredCategory(
             categories: List<Category>,
             type: TxnType,
-        ): String? {
-            if (type != TxnType.EXPENSE && type != TxnType.INCOME) return null
-            val candidates = categories.filter { it.type == type && !it.hidden }
-            if (candidates.isEmpty()) return null
-            val remembered = sessionPicks[type] ?: memory?.categoryOf(type)
-            return candidates.firstOrNull { it.id == remembered }?.id
-                ?: candidates
-                    .sortedWith(compareByDescending<Category> { it.usageCount }.thenBy { it.sortOrder })
-                    .first()
-                    .id
-        }
-
-        /** 账户优先级：本次会话选过的 → 上次实际用的 → 设置里的默认账户 → 唯一资金账户。 */
-        private fun preferredAccount(
-            accounts: List<Account>,
-            m: EditorMemory,
-        ): String? {
-            val funds = accounts.filter { it.type != AccountType.DEBT }
-            if (funds.isEmpty()) return null
-            val remembered = sessionAccountId ?: m.payAccountId
-            return funds.firstOrNull { it.id == remembered }?.id
-                ?: funds.firstOrNull { it.id == m.defaultAccountId }?.id
-                ?: funds.singleOrNull()?.id
-        }
-
-        /**
-         * 保存成功后记住这次的选择。
-         *
-         * 只在新建时写：老账目的分类不代表用户当前习惯，写进去等于用历史污染记忆。
-         * 组合支付记「出钱最多的那个」账户，那才是下次真正会用的。
-         */
-        private suspend fun rememberSelection(s: EditorUiState) {
-            runCatching { settings.setLastTxnType(s.type) }
-            if (s.editingId != null) return
-            runCatching {
-                if (s.type == TxnType.EXPENSE || s.type == TxnType.INCOME) {
-                    settings.setLastCategory(s.type, s.categoryId)
-                }
-                val payer = if (s.splitMode) s.splits.maxByOrNull { it.value }?.key else s.accountId
-                payer?.let { settings.setLastPayAccount(it) }
-            }
-        }
+        ) = memoryDelegate.preferredCategory(categories, type)
 
         private fun observeTags() {
             viewModelScope.launch {
@@ -385,42 +279,15 @@ class EditorViewModel
          *
          * 只建人、不带本金：本金在金额区填，保存时一并落成一笔借出/借入流水。
          */
-        fun createDebtAccount(name: String) {
-            val trimmed = name.trim()
-            if (trimmed.isEmpty()) {
-                _state.update { it.copy(error = "请填写对方姓名") }
-                return
-            }
-            viewModelScope.launch {
-                val result =
-                    saveDebtAccount(
-                        DebtAccountDraft(
-                            counterparty = trimmed,
-                            firstAction =
-                                if (_state.value.debtDirection == DebtDirection.LEND) {
-                                    DebtAction.LEND_OUT
-                                } else {
-                                    DebtAction.BORROW_IN
-                                },
-                        ),
-                    )
-                when (result) {
-                    is AppResult.Success -> {
-                        _state.update { it.copy(debtAccountId = result.data, error = null, dirty = true) }
-                        _events.emit(EditorEvent.Message("已新建借贷账户「$trimmed」"))
-                    }
-                    is AppResult.Failure -> _state.update { it.copy(error = result.error.message) }
-                }
-            }
-        }
+        fun createDebtAccount(name: String) = submitDelegate.createDebtAccount(name)
 
         fun selectCategory(id: String) {
-            sessionPicks[_state.value.type] = id
+            runtime.sessionPicks[_state.value.type] = id
             _state.update { it.copy(categoryId = id, dirty = true) }
         }
 
         fun selectAccount(id: String) {
-            sessionAccountId = id
+            runtime.sessionAccountId = id
             _state.update {
                 val to = if (it.type == TxnType.TRANSFER && it.toAccountId == id) it.accountId else it.toAccountId
                 it.copy(accountId = id, toAccountId = to, dirty = true)
@@ -531,272 +398,12 @@ class EditorViewModel
          * 只在 `refundOfTxnId` 上建立关联。所以这里保存成功后只刷新「已退金额」，
          * 页面上的金额输入框一个字符都不改。
          */
-        fun submitRefund() {
-            val s = _state.value
-            val originalId = s.editingId ?: return
-            val cents = s.refundCents
-            if (cents <= 0L) {
-                _state.update { it.copy(error = "请输入退款金额") }
-                return
-            }
-            viewModelScope.launch {
-                _state.update { it.copy(saving = true, error = null) }
-                when (val result = refundTxn(originalId, cents)) {
-                    is AppResult.Success -> {
-                        val total = runCatching { txnRepository.refundedTotal(originalId) }.getOrDefault(0L)
-                        _state.update { it.copy(saving = false, refundedCents = total, refundText = "") }
-                        _events.emit(EditorEvent.Message("已记退款 ¥${MoneyFormatter.centsToYuan(cents)}"))
-                    }
-                    is AppResult.Failure ->
-                        _state.update { it.copy(saving = false, error = result.error.message) }
-                }
-            }
-        }
-
-        /**
-         * 保存成功后顺手建分期计划。
-         *
-         * 必须在流水落库之后：`installment.txnId` 要指向真实 id。失败不阻断保存——
-         * 账已经记上了，分期没建成就退回去重新点一下，比整笔作废轻得多。
-         */
-        private suspend fun createInstallment(
-            txnId: String,
-            s: EditorUiState,
-            periods: Int,
-        ) {
-            val account = s.accounts.firstOrNull { it.id == s.accountId } ?: return
-            val cents = s.effectiveAmount ?: return
-            val cycle = BillCycleCalculator.of(DateUtils.today(), account.billDay ?: 1, account.repayDay ?: 20)
-            runCatching {
-                installmentRepository.upsert(
-                    Installment(
-                        id = Ids.newId("ins"),
-                        scope = InstallmentScope.TXN,
-                        txnId = txnId,
-                        accountId = account.id,
-                        principalCents = cents,
-                        periods = periods,
-                        startBillKey = cycle.billKey,
-                        createdAt = System.currentTimeMillis(),
-                    ),
-                )
-            }
-        }
-
-        /**
-         * 「再记」成功后清场，页面留在原地。
-         *
-         * 保留 `type` / `categoryId` / `accountId` / `dateTime`——连续记同一天的同类账是主场景；
-         * 金额、备注、照片、标签、商家、报销、退款、分期全部清掉，否则下一笔会拖着上一笔的尾巴。
-         */
-        private fun resetForNext() {
-            _state.update {
-                it.copy(
-                    saving = false,
-                    calc = CalcState(),
-                    note = "",
-                    photoPath = null,
-                    selectedTagIds = emptySet(),
-                    merchantId = null,
-                    pendingReimbursement = false,
-                    excludedFromStats = false,
-                    refundText = "",
-                    installmentPeriods = null,
-                    error = null,
-                    dirty = false,
-                )
-            }
-        }
+        fun submitRefund() = submitDelegate.submitRefund()
 
         /** 常用标签：按使用次数取前 10 个（标签抽屉默认也按这个顺序排）。 */
         fun quickTags(): List<Tag> = _state.value.tags.sortedByDescending { it.usageCount }.take(10)
 
         // ---------- 保存 ----------
 
-        fun submit(stayOpen: Boolean = false) {
-            val s = _state.value
-            if (s.saving) return
-            // 组合支付时金额由各账户合计决定，不吃计算器的值
-            val cents = s.effectiveAmount
-            if (cents == null) {
-                val reason =
-                    if (s.splitMode) "请至少给两个账户填金额" else (s.calc.error ?: "请输入大于 0 的金额")
-                _state.update { it.copy(error = reason) }
-                return
-            }
-            // 借贷走独立用例：它不是「记一笔收支」，而是一次资金往来，
-            // 一条流水要同时改动借贷账户与资金账户（PRD 2.2）
-            if (s.type == TxnType.DEBT) {
-                submitDebt(s, cents)
-                return
-            }
-            if (s.splitMode) {
-                submitSplit(s, stayOpen)
-                return
-            }
-            val draft =
-                TxnDraft(
-                    id = s.editingId,
-                    type = s.type,
-                    amountCents = cents,
-                    categoryId = s.categoryId,
-                    accountId = s.accountId,
-                    toAccountId = s.toAccountId,
-                    feeCents = if (s.type == TxnType.TRANSFER) s.feeCents else 0,
-                    dateTime = s.dateTime,
-                    note = s.note,
-                    excludedFromStats = s.excludedFromStats,
-                    pendingReimbursement = s.pendingReimbursement,
-                    merchantId = s.merchantId,
-                    merchantName = s.merchantName,
-                    photoPath = s.photoPath,
-                )
-            viewModelScope.launch {
-                _state.update { it.copy(saving = true, error = null) }
-                when (val result = saveTxn(draft)) {
-                    is AppResult.Success -> {
-                        rememberSelection(s)
-                        saveTags(result.data, s.selectedTagIds)
-                        s.installmentPeriods?.let { createInstallment(result.data, s, it) }
-                        if (stayOpen) {
-                            resetForNext()
-                            _events.emit(EditorEvent.SavedAndNext(result.data, cents))
-                        } else {
-                            _state.update { it.copy(saving = false) }
-                            _events.emit(EditorEvent.Saved(result.data))
-                        }
-                    }
-                    is AppResult.Failure -> {
-                        _state.update { it.copy(saving = false, error = result.error.message) }
-                    }
-                }
-            }
-        }
-
-        /**
-         * 组合支付保存：每个账户各生成一条流水（PRD v1.9.1 第 5 条，用户选定「各显示 1 条」）。
-         *
-         * 这样余额自然各扣各的，明细里也看得出「这笔到底谁付了多少」；
-         * 备注追加「组合 i/n」，方便日后一眼认出它们本是一笔。
-         *
-         * 编辑模式下先把原流水软删除再落新的：一笔账拆成 N 条之后，原来那条已经没有意义了。
-         * 放回收站而不是物理删除，用户后悔还能捞回来。
-         */
-        private fun submitSplit(
-            s: EditorUiState,
-            stayOpen: Boolean = false,
-        ) {
-            val parts = s.splits.filterValues { it > 0L }
-            if (parts.size < 2) {
-                _state.update { it.copy(error = "组合支付至少要两个账户各出一部分") }
-                return
-            }
-            viewModelScope.launch {
-                _state.update { it.copy(saving = true, error = null) }
-                var lastId: String? = null
-                var index = 0
-                for ((accountId, cents) in parts) {
-                    index += 1
-                    val note =
-                        if (parts.size > 1) {
-                            "${s.note}（组合 $index/${parts.size}）".trim().take(200)
-                        } else {
-                            s.note
-                        }
-                    val draft =
-                        TxnDraft(
-                            type = s.type,
-                            amountCents = cents,
-                            categoryId = s.categoryId,
-                            accountId = accountId,
-                            dateTime = s.dateTime,
-                            note = note,
-                            excludedFromStats = s.excludedFromStats,
-                            pendingReimbursement = s.pendingReimbursement,
-                            merchantId = s.merchantId,
-                            merchantName = s.merchantName,
-                            photoPath = s.photoPath,
-                        )
-                    when (val result = saveTxn(draft)) {
-                        is AppResult.Success -> {
-                            lastId = result.data
-                            saveTags(result.data, s.selectedTagIds)
-                        }
-                        is AppResult.Failure -> {
-                            _state.update { it.copy(saving = false, error = result.error.message) }
-                            return@launch
-                        }
-                    }
-                }
-                val finalId = lastId
-                if (finalId != null) {
-                    s.editingId?.let { runCatching { txnRepository.softDelete(it, System.currentTimeMillis()) } }
-                    rememberSelection(s)
-                    s.installmentPeriods?.let { createInstallment(finalId, s, it) }
-                    if (stayOpen) {
-                        resetForNext()
-                        _events.emit(EditorEvent.SavedAndNext(finalId, s.splitTotal))
-                    } else {
-                        _state.update { it.copy(saving = false) }
-                        _events.emit(EditorEvent.Saved(finalId))
-                    }
-                }
-            }
-        }
-
-        /** 标签写入：失败不阻断保存，标签丢总比账没记上好。 */
-        private suspend fun saveTags(
-            txnId: String,
-            tagIds: Set<String>,
-        ) {
-            if (tagIds.isEmpty()) return
-            runCatching { tagRepository.setTxnTags(txnId, tagIds.toList()) }
-        }
-
-        /**
-         * 借贷保存：只支持「新的借出 / 新的借入」。
-         *
-         * 收款与还款是对**已有欠款**的动作，必须先看余额，放在借贷账户详情页做（PRD 2.5）。
-         * 这样记账面板里只有一条直线：选方向 → 选对方 → 选资金账户 → 金额 → 保存。
-         */
-        private fun submitDebt(
-            s: EditorUiState,
-            cents: Long,
-        ) {
-            val debtId = s.debtAccountId
-            if (debtId == null) {
-                _state.update { it.copy(error = "请选择借贷账户（对方）") }
-                return
-            }
-            val fundId = s.accountId
-            if (fundId == null) {
-                _state.update { it.copy(error = "请选择资金账户") }
-                return
-            }
-            val action =
-                if (s.debtDirection == DebtDirection.LEND) DebtAction.LEND_OUT else DebtAction.BORROW_IN
-            viewModelScope.launch {
-                _state.update { it.copy(saving = true, error = null) }
-                val result =
-                    recordDebtOp(
-                        DebtOpDraft(
-                            action = action,
-                            debtAccountId = debtId,
-                            fundAccountId = fundId,
-                            amountCents = cents,
-                            at = s.dateTime,
-                            note = s.note,
-                        ),
-                    )
-                when (result) {
-                    is AppResult.Success -> {
-                        runCatching { settings.setLastTxnType(TxnType.DEBT) }
-                        _state.update { it.copy(saving = false) }
-                        _events.emit(EditorEvent.Saved(result.data))
-                    }
-                    is AppResult.Failure ->
-                        _state.update { it.copy(saving = false, error = result.error.message) }
-                }
-            }
-        }
+        fun submit(stayOpen: Boolean = false) = submitDelegate.submit(stayOpen)
     }

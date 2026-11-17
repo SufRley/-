@@ -6,8 +6,10 @@ import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.repository.BackupRepositoryImpl
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
+import com.xxjz.ledger.domain.model.AccountDto
 import com.xxjz.ledger.domain.model.AppSettings
 import com.xxjz.ledger.domain.model.BackupPayload
+import com.xxjz.ledger.domain.model.CategoryDto
 import com.xxjz.ledger.domain.model.TxnDto
 import com.xxjz.ledger.domain.usecase.RestoreBackupUseCase
 import com.xxjz.ledger.testutil.FakeDocumentIo
@@ -73,8 +75,8 @@ class RestoreViewModelTest {
         BackupPayload(
             schemaVersion = AppDatabase.SCHEMA_VERSION,
             createdAt = 1_700_000_000_000,
-            accounts = listOf(com.xxjz.ledger.data.backup.AccountDto(id = "a1", name = "现金")),
-            categories = listOf(com.xxjz.ledger.data.backup.CategoryDto(id = "c1", name = "餐饮")),
+            accounts = listOf(AccountDto(id = "a1", name = "现金")),
+            categories = listOf(CategoryDto(id = "c1", name = "餐饮")),
             txns = listOf(TxnDto(id = "t1", amount = 500), TxnDto(id = "t2", amount = 600)),
         )
 

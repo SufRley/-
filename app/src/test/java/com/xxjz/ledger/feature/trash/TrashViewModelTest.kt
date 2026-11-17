@@ -3,6 +3,8 @@ package com.xxjz.ledger.feature.trash
 import com.xxjz.ledger.data.datastore.SettingsDataStore
 import com.xxjz.ledger.data.local.TestDatabaseFactory
 import com.xxjz.ledger.data.local.db.AppDatabase
+import com.xxjz.ledger.data.repository.BackupRepositoryImpl
+import com.xxjz.ledger.data.repository.DebtToAccountMigrator
 import com.xxjz.ledger.domain.model.Account
 import com.xxjz.ledger.domain.model.AccountType
 import com.xxjz.ledger.domain.model.AppSettings
@@ -66,7 +68,7 @@ class TrashViewModelTest {
                 accountRepository = accountRepo,
                 budgetRepository = budgetRepo,
                 settings = settings,
-                cleanup = TrashCleanupUseCase(db, settings),
+                cleanup = TrashCleanupUseCase(BackupRepositoryImpl(db, DebtToAccountMigrator(db)), settings),
             )
     }
 

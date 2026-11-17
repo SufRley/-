@@ -3,7 +3,7 @@ build:
 
 complexity:
   LongMethod:
-    threshold: 200
+    threshold: 60
   LongParameterList:
     functionThreshold: 12
     constructorThreshold: 20
@@ -12,13 +12,13 @@ complexity:
   TooManyFunctions:
     thresholdInFiles: 60
     thresholdInClasses: 60
-    # 40 → 45（v1.8.0）：TxnDao 是流水这一张表上所有查询的唯一入口（明细/报表/备份/回收站/
-    # 报销/借贷/统计），本就压在 40 上限；资产报表需要「含回收站的响应式全量查询」再加 1 条。
-    # 拆接口会让「一张表两个 DAO」在同一事务里交叉引用，代价大于收益，故放宽上限而不是拆。
-    thresholdInInterfaces: 45
+    # 阈值回到默认 40。TxnDao 是流水这一张表上所有查询的唯一入口（明细/报表/备份/回收站/
+    # 报销/借贷/统计），历史上超到 45；拆接口会让「一张表两个 DAO」在同一事务里交叉引用，
+    # 代价大于收益，故这一处既有例外登记在 detekt-baseline.xml 里，而非放宽全局阈值。
+    thresholdInInterfaces: 40
     thresholdInObjects: 60
   LargeClass:
-    threshold: 1200
+    threshold: 600
   NestedBlockDepth:
     threshold: 6
 

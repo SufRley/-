@@ -9,8 +9,10 @@ import com.xxjz.ledger.data.local.entity.CategoryEntity
 import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.repository.BackupRepositoryImpl
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
+import com.xxjz.ledger.domain.model.AccountDto
 import com.xxjz.ledger.domain.model.BackupPayload
 import com.xxjz.ledger.domain.model.BudgetDto
+import com.xxjz.ledger.domain.model.CategoryDto
 import com.xxjz.ledger.domain.model.TxnDto
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -139,8 +141,8 @@ class RestoreBackupUseCaseTest {
                 BackupPayload(
                     schemaVersion = 4,
                     createdAt = 1_800_000_000_000,
-                    accounts = listOf(com.xxjz.ledger.data.backup.AccountDto(id = "a9", name = "新账户")),
-                    categories = listOf(com.xxjz.ledger.data.backup.CategoryDto(id = "c9", name = "新分类")),
+                    accounts = listOf(AccountDto(id = "a9", name = "新账户")),
+                    categories = listOf(CategoryDto(id = "c9", name = "新分类")),
                     txns =
                         listOf(
                             TxnDto(id = "n1", amount = 900, accountId = "a9", categoryId = "c9", dateKey = 20261101),
@@ -169,7 +171,7 @@ class RestoreBackupUseCaseTest {
             val payload =
                 BackupPayload(
                     schemaVersion = 4,
-                    accounts = listOf(com.xxjz.ledger.data.backup.AccountDto(id = "a9", name = "新账户")),
+                    accounts = listOf(AccountDto(id = "a9", name = "新账户")),
                     txns = listOf(TxnDto(id = "n1", amount = 900, accountId = "a9")),
                 )
 
@@ -202,7 +204,7 @@ class RestoreBackupUseCaseTest {
             val payload =
                 BackupPayload(
                     schemaVersion = 4,
-                    accounts = listOf(com.xxjz.ledger.data.backup.AccountDto(id = "a1", name = "现金")),
+                    accounts = listOf(AccountDto(id = "a1", name = "现金")),
                     txns =
                         listOf(
                             TxnDto(id = "live", amount = 100, deletedAt = null),
@@ -225,7 +227,7 @@ class RestoreBackupUseCaseTest {
             val payload =
                 BackupPayload(
                     schemaVersion = 4,
-                    accounts = listOf(com.xxjz.ledger.data.backup.AccountDto(id = "a1", name = "现金")),
+                    accounts = listOf(AccountDto(id = "a1", name = "现金")),
                     txns = listOf(TxnDto(id = "n1", amount = 900)),
                 )
 

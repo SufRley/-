@@ -31,11 +31,11 @@ import com.xxjz.ledger.data.local.entity.TxnEntity
 import com.xxjz.ledger.data.local.entity.TxnTagEntity
 
 /**
- * 应用数据库，version 7。
+ * 应用数据库，version 9（以 [SCHEMA_VERSION] 为准）。
  *
  * 版本演进（见 [ALL_MIGRATIONS]）：v2 预算表、v3 借贷坏账、v4 账户软删、
  * v5 账户五分类与投资字段、v6 借贷账户化（负债/备注/还款日、借贷动作、分期关联）、
- * v7 分期计划表、v9 分期已执行期数与下次生成时刻。
+ * v7 分期计划表、v8 账目收据照片路径、v9 分期已执行期数与下次生成时刻。
  *
  * - `exportSchema = true`：schema 快照随仓库走（`app/schemas`），便于后续迁移评审。
  * - WAL：在 `DatabaseModule` 建库时通过 `JournalMode.WRITE_AHEAD_LOGGING` 开启。

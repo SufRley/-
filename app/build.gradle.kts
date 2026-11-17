@@ -58,9 +58,7 @@ android {
     }
 
     testOptions {
-        unitTests.all {
-            it.useJUnitPlatform()
-        }
+        // useJUnitPlatform() 统一在下方 tasks.withType<Test>() 配置，这里不重复设置。
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
@@ -179,6 +177,10 @@ detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
     source.setFrom("src/main/java", "src/test/java")
+    // 复杂度阈值回到 detekt 默认值，存量 60 处违规（多为 Compose 屏幕函数）由基线豁免；
+    // 基线之外的新增代码必须满足默认规则，避免阈值被逐步放宽到形同虚设。
+    // 新增/改动文件后可用 ./gradlew detektBaseline 把确需保留的违规纳入基线。
+    baseline = file("$rootDir/config/detekt/detekt-baseline.xml")
 }
 
 tasks.named("check") {

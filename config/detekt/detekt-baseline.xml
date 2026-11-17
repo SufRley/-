@@ -1,0 +1,67 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>LargeClass:EditorViewModelTest.kt$EditorViewModelTest</ID>
+    <ID>LongMethod:AccountDetailScreen.kt$@Composable private fun AccountSummaryCard( state: AccountDetailUiState, onEditMarketValue: () -&gt; Unit, onToggleInclude: (Boolean) -&gt; Unit, onDebtOp: (DebtAction) -&gt; Unit, onWriteOff: () -&gt; Unit, onSplit: () -&gt; Unit, onRepayBill: () -&gt; Unit, )</ID>
+    <ID>LongMethod:AccountDetailScreen.kt$@Composable private fun InstallmentDialog( candidates: List&lt;Txn&gt;, categoryNameOf: (Txn) -&gt; String, onDismiss: () -&gt; Unit, onConfirm: (txnId: String?, principalCents: Long, periods: Int, feeCents: Long, feeMode: FeeMode) -&gt; Unit, )</ID>
+    <ID>LongMethod:AccountDetailScreen.kt$@Composable private fun MergeTargetDialog( current: Account?, targets: List&lt;Account&gt;, onDismiss: () -&gt; Unit, onConfirm: (String) -&gt; Unit, )</ID>
+    <ID>LongMethod:AccountDetailScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun AccountDetailScreen( onBack: () -&gt; Unit, onOpenTxn: (String) -&gt; Unit, viewModel: AccountDetailViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:AccountListScreen.kt$@Composable private fun AccountRow( account: Account, onClick: () -&gt; Unit, onEdit: () -&gt; Unit, onToggleHidden: () -&gt; Unit, onDelete: () -&gt; Unit, hiddenLabel: Boolean = false, )</ID>
+    <ID>LongMethod:AccountListScreen.kt$@OptIn(ExperimentalLayoutApi::class) @Composable private fun AccountEditDialog( account: Account?, onDismiss: () -&gt; Unit, onSave: (Account) -&gt; Unit, )</ID>
+    <ID>LongMethod:AccountListScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun AccountListScreen( onBack: () -&gt; Unit, onOpen: (String) -&gt; Unit, onOpenAssetReport: () -&gt; Unit = {}, onOpenReimbursement: () -&gt; Unit = {}, onMenu: () -&gt; Unit = {}, /** 作为底部主 Tab 时左上角是 ☰，作为二级页时是返回箭头（PRD D10）。 */ isRootTab: Boolean = false, viewModel: AccountListViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:AllTxnsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun AllTxnsScreen( initialMonthKey: Int, onBack: () -&gt; Unit, onOpenTxn: (String) -&gt; Unit, onEditTxn: (String) -&gt; Unit, onOpenAccount: (String) -&gt; Unit, onOpenRecurring: () -&gt; Unit, onOpenSplit: (String) -&gt; Unit, onOpenSearch: () -&gt; Unit, onOpenCalendar: () -&gt; Unit, viewModel: LedgerViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:AmountInput.kt$@Composable fun AmountInput( value: String, onValueChange: (String) -&gt; Unit, modifier: Modifier = Modifier, placeholder: String = "0.00", enabled: Boolean = true, textAlign: TextAlign = TextAlign.Start, /** 打到真正的输入框上，测试才能用 PerformTextInput 这类动作（外层 Box 只有点击语义）。 */ testTag: String? = null, )</ID>
+    <ID>LongMethod:AppLockHost.kt$@Composable fun AppLockHost(content: @Composable () -&gt; Unit)</ID>
+    <ID>LongMethod:AppNavGraph.kt$internal fun NavGraphBuilder.appNavGraph( navController: NavHostController, tabs: TabController, onOpenTab: (MainTab) -&gt; Unit, onMenuClick: () -&gt; Unit = {}, onAdd: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:AssetReportScreen.kt$@Composable private fun BreakdownPie( slices: List&lt;AssetSlice&gt;, total: Long, totalLabel: String, tag: String, mode: BreakdownMode, onModeChange: (BreakdownMode) -&gt; Unit, )</ID>
+    <ID>LongMethod:AssetReportScreen.kt$@Composable private fun TrendPanel( state: AssetReportUiState, minHeight: Dp, onPeriod: (TrendPeriod) -&gt; Unit, )</ID>
+    <ID>LongMethod:BackupScreen.kt$@Composable private fun RestoreDialog( onDismiss: () -&gt; Unit, viewModel: RestoreViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:BackupScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun BackupScreen( onBack: () -&gt; Unit = {}, viewModel: BackupViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:BudgetEditScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun BudgetEditScreen( onBack: () -&gt; Unit, viewModel: BudgetEditViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:BudgetOverviewCard.kt$@Composable fun BudgetOverviewCard( budget: BudgetCardState, onOpen: () -&gt; Unit, )</ID>
+    <ID>LongMethod:BudgetProgress.kt$@Composable fun BudgetRow( progress: BudgetProgress, modifier: Modifier = Modifier, onClick: (() -&gt; Unit)? = null, )</ID>
+    <ID>LongMethod:BudgetScreen.kt$@Composable fun BudgetScreen( onEdit: (budgetId: String?, monthKey: Int) -&gt; Unit = { _, _ -&gt; }, viewModel: BudgetViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:CalendarScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CalendarScreen( onBack: () -&gt; Unit, viewModel: CalendarViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:CategoryDrillScreen.kt$@Composable fun CategoryDrillScreen( categoryId: String, onBack: () -&gt; Unit, onOpenTxn: (String) -&gt; Unit = {}, viewModel: CategoryDrillViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:CategoryManageScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun CategoryManageScreen( onBack: () -&gt; Unit, viewModel: CategoryManageViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:CsvExportScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun CsvExportScreen( onBack: () -&gt; Unit = {}, viewModel: CsvExportViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:DebtToAccountMigrator.kt$DebtToAccountMigrator$suspend fun run()</ID>
+    <ID>LongMethod:EditorDialogs.kt$@Composable internal fun EditorPickDialogs( viewModel: EditorViewModel, state: EditorUiState, show: PickVisibility, newDebtName: String, onNewDebtNameChange: (String) -&gt; Unit, close: (Pick) -&gt; Unit, )</ID>
+    <ID>LongMethod:EditorKeypad.kt$@Composable internal fun EditorKeypad( display: KeypadDisplay, actions: KeypadActions, calculatorMode: Boolean, saveBlocker: String?, showSaveAndNext: Boolean, )</ID>
+    <ID>LongMethod:EditorPickers.kt$@Composable fun CategoryPickerDialog( tree: List&lt;Pair&lt;Category, List&lt;Category&gt;&gt;&gt;, selectedId: String?, onSelect: (String) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:EditorScreen.kt$@Composable fun EditorScreen( viewModel: EditorViewModel, editTxnId: String? = null, templateId: String? = null, onDismiss: () -&gt; Unit, onSaved: () -&gt; Unit, onOpenSettings: () -&gt; Unit = {}, onOpenTemplates: () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:EditorScreen.kt$@Composable private fun CategoryAmountRow( state: EditorUiState, onPickCategory: () -&gt; Unit, )</ID>
+    <ID>LongMethod:EditorScreen.kt$@Composable private fun NoteAndPhotoRow( note: String, onNoteChange: (String) -&gt; Unit, photoPath: String?, processing: Boolean, onPhotoClick: () -&gt; Unit, onPhotoRemove: () -&gt; Unit, )</ID>
+    <ID>LongMethod:EditorStateChips.kt$@Composable internal fun EditorStateChips( state: EditorUiState, viewModel: EditorViewModel, )</ID>
+    <ID>LongMethod:EditorStateChips.kt$@Composable private fun MerchantPickerDialog( merchants: List&lt;Merchant&gt;, selectedId: String?, onSelect: (String) -&gt; Unit, onCreate: (String) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:EditorTemplateSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable internal fun EditorTemplateSheet( templates: List&lt;Template&gt;, categoryOf: (String?) -&gt; Pair&lt;String, String&gt;?, onPick: (String) -&gt; Unit, onManage: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:InstallmentSetupDialog.kt$@Composable fun InstallmentSetupDialog( amountCents: Long, existing: Installment?, onDismiss: () -&gt; Unit, onConfirm: (periods: Int, paidPeriods: Int) -&gt; Unit, )</ID>
+    <ID>LongMethod:LabeledPieChart.kt$@Composable fun LabeledPieChart( slices: List&lt;PieSlice&gt;, callouts: List&lt;PieCallout&gt;, selected: Int, onSelect: (Int) -&gt; Unit, modifier: Modifier = Modifier, thickness: Dp = 24.dp, centerContent: @Composable () -&gt; Unit = {}, )</ID>
+    <ID>LongMethod:LedgerScreen.kt$@Composable fun LedgerScreen( nav: LedgerNav = LedgerNav(), viewModel: LedgerViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:LedgerScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun TxnItem( row: TxnRow, selecting: Boolean, selected: Boolean, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, showDate: Boolean = false, )</ID>
+    <ID>LongMethod:LockScreen.kt$@Composable fun LockScreen( state: AppLockState, biometricAvailable: Boolean, onUnlockBiometric: () -&gt; Unit, onUnlockPin: (String) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>LongMethod:MineScreen.kt$@Composable fun MineScreen( onOpenAccounts: () -&gt; Unit = {}, onOpenTemplates: () -&gt; Unit = {}, onOpenRecurring: () -&gt; Unit = {}, onOpenReimbursement: () -&gt; Unit = {}, onOpenBackup: () -&gt; Unit = {}, onOpenCsvExport: () -&gt; Unit = {}, onOpenTrash: () -&gt; Unit = {}, onOpenManage: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, viewModel: MineViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:MonthPicker.kt$@Composable fun MonthPickerDialog( current: YearMonth, onPick: (YearMonth) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:PaymentSection.kt$@Composable internal fun PaymentSection( state: EditorUiState, viewModel: EditorViewModel, onPickAccount: () -&gt; Unit, onPickToAccount: () -&gt; Unit, onPickDebtAccount: () -&gt; Unit, onNewDebt: () -&gt; Unit, )</ID>
+    <ID>LongMethod:RecurringEditScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun RecurringEditScreen( onBack: () -&gt; Unit = {}, viewModel: RecurringEditViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:RecurringListScreen.kt$@Composable private fun RecurringRowItem( row: RecurringRow, onToggle: () -&gt; Unit, onRunNow: () -&gt; Unit, onDelete: () -&gt; Unit, onOpen: () -&gt; Unit, )</ID>
+    <ID>LongMethod:ReimbursementScreen.kt$@Composable private fun ReimburseDialog( row: ReimbursementRow, accounts: List&lt;Account&gt;, onDismiss: () -&gt; Unit, onConfirm: (text: String, accountId: String?, dateTime: Long) -&gt; Unit, )</ID>
+    <ID>LongMethod:ReimbursementScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ReimbursementScreen( onBack: () -&gt; Unit = {}, viewModel: ReimbursementViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ReportScreen.kt$@Composable fun ReportScreen( onDrill: (String) -&gt; Unit = {}, onYearSummary: () -&gt; Unit = {}, onMenu: () -&gt; Unit = {}, viewModel: ReportViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ReportScreen.kt$@Composable private fun TrendSection( summary: ReportSummary, period: ReportPeriod, )</ID>
+    <ID>LongMethod:ReportViewModel.kt$ReportViewModel$private fun build( w: ReportWindow, ty: TxnType, viewMode: ReportView, current: List&lt;Txn&gt;, previous: List&lt;Txn&gt;, categories: List&lt;Category&gt;, ): ReportUiState</ID>
+    <ID>LongMethod:SearchScreen.kt$@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class) @Composable fun SearchScreen( onBack: () -&gt; Unit, onOpen: (String) -&gt; Unit, viewModel: SearchViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:SeedData.kt$SeedData$fun categories(): List&lt;CategoryEntity&gt;</ID>
+    <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( onBack: () -&gt; Unit, viewModel: SettingsViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:SplitTxnScreen.kt$@Composable fun SplitTxnScreen( onBack: () -&gt; Unit, onDone: (String) -&gt; Unit, viewModel: SplitTxnViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:TemplateListScreen.kt$@Composable private fun TemplateEditDialog( template: Template?, onDismiss: () -&gt; Unit, onConfirm: (String, Long, TxnType, String) -&gt; Unit, )</ID>
+    <ID>LongMethod:TemplateListScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TemplateListScreen( onBack: () -&gt; Unit, onUse: (String) -&gt; Unit, viewModel: TemplateViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:TrashScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TrashScreen( onBack: () -&gt; Unit = {}, viewModel: TrashViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:TxnDetailScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun TxnDetailScreen( onBack: () -&gt; Unit, onEdit: (String) -&gt; Unit, viewModel: TxnDetailViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:TxnMenuHost.kt$@Composable fun TxnMenuHost( target: TxnRow?, viewModel: LedgerViewModel, onOpenAccount: (String) -&gt; Unit, onOpenRecurring: () -&gt; Unit, onEditTxn: (String) -&gt; Unit, onStartBatch: (TxnRow) -&gt; Unit, onDelete: (TxnRow) -&gt; Unit, onOpenSplit: (String) -&gt; Unit = {}, onDismiss: () -&gt; Unit, )</ID>
+    <ID>LongMethod:XxjzNavHost.kt$@Composable fun XxjzApp( navController: NavHostController = rememberNavController(), onAdd: () -&gt; Unit = {}, routeOverride: String? = null, onRouteChange: ((String) -&gt; Unit)? = null, /** 桌面快捷方式落点（AC-84）；为 null 表示普通启动。 */ shortcut: ShortcutAction? = null, onShortcutConsumed: () -&gt; Unit = {}, settings: SettingsRepository, )</ID>
+    <ID>LongMethod:YearSummaryScreen.kt$@Composable fun YearSummaryScreen( onBack: () -&gt; Unit, viewModel: YearSummaryViewModel = hiltViewModel(), )</ID>
+    <ID>TooManyFunctions:TxnDao.kt$TxnDao</ID>
+  </CurrentIssues>
+</SmellBaseline>
