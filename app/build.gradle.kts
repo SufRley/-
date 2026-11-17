@@ -36,7 +36,6 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 自用发布包：使用本地 debug keystore 签名，密钥文件不进入仓库（见 README 签名说明）
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -45,12 +44,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        }
-    }
+    kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 
     buildFeatures {
         compose = true
@@ -58,20 +52,16 @@ android {
     }
 
     testOptions {
-        // useJUnitPlatform() 统一在下方 tasks.withType<Test>() 配置，这里不重复设置。
         unitTests {
             isIncludeAndroidResources = true
             isReturnDefaultValues = true
         }
     }
-
-    packaging {
-        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
-    }
-
     sourceSets {
-        getByName("test") { resources.srcDirs("$projectDir/schemas") }
+        getByName("test") { java.srcDirs("$rootDir/test-shared") }
     }
+
+    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
 
     lint {
         warningsAsErrors = false
@@ -81,12 +71,16 @@ android {
     }
 }
 
-ksp {
-    arg("room.schemaLocation", "$projectDir/schemas")
-    arg("room.generateKotlin", "true")
-}
+ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 dependencies {
+    // app 是组装层：依赖所有下层模块，自己不放业务逻辑。
+    implementation(project(":core"))
+    implementation(project(":domain"))
+    implementation(project(":data"))
+    implementation(project(":feature:entry"))
+    implementation(project(":feature:asset"))
+
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -104,12 +98,6 @@ dependencies {
 
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.hilt.navigation.compose)
-
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
-
-    implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.hilt.android)
@@ -117,11 +105,13 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
-
-    implementation(libs.androidx.biometric)
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)
+    implementation(libs.androidx.biometric)
 
+    testImplementation(libs.androidx.room.runtime)
+    testImplementation(libs.androidx.room.ktx)
+    testImplementation(libs.androidx.test.core)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly(libs.junit.vintage.engine)
@@ -148,7 +138,6 @@ dependencies {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
     systemProperty("robolectric.dependency.repo.url", "https://maven.aliyun.com/repository/public")
-    // 容器 cgroup 只有 8G：测试 JVM 限 1.2G，并每 25 个类重启一次，避免 Robolectric 堆持续膨胀把整机打爆
     maxHeapSize = "1200m"
     forkEvery = 25
     maxParallelForks = 1
@@ -157,32 +146,33 @@ tasks.withType<Test>().configureEach {
         events("passed", "skipped", "failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
     }
-    // 把测试 classpath 落盘，供 CI/脚本核对测试依赖（原来在文件末尾的第二个重复块）
     doLast {
         project.layout.buildDirectory.file("testcp-${name}.txt").get().asFile
             .writeText(classpath.files.joinToString(File.pathSeparator))
     }
 }
 
+// ktlint / detekt 集中在 app 模块，源码范围扩展到所有模块，保证全仓统一风格与基线。
+val allSourceDirs = listOf(
+    "$rootDir/app/src/main/java", "$rootDir/app/src/test/java",
+    "$rootDir/core/src/main/java", "$rootDir/core/src/test/java",
+    "$rootDir/domain/src/main/java", "$rootDir/domain/src/test/java", "$rootDir/domain/src/testFixtures/java",
+    "$rootDir/data/src/main/java", "$rootDir/data/src/test/java",
+    "$rootDir/feature/entry/src/main/java", "$rootDir/feature/entry/src/test/java",
+    "$rootDir/feature/asset/src/main/java", "$rootDir/feature/asset/src/test/java",
+)
+
 ktlint {
     android.set(true)
     ignoreFailures.set(false)
-    filter {
-        exclude { it.file.path.contains("build") }
-    }
+    filter { exclude { it.file.path.contains("build") } }
 }
-
 
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
-    source.setFrom("src/main/java", "src/test/java")
-    // 复杂度阈值回到 detekt 默认值，存量 60 处违规（多为 Compose 屏幕函数）由基线豁免；
-    // 基线之外的新增代码必须满足默认规则，避免阈值被逐步放宽到形同虚设。
-    // 新增/改动文件后可用 ./gradlew detektBaseline 把确需保留的违规纳入基线。
+    source.setFrom(allSourceDirs)
     baseline = file("$rootDir/config/detekt/detekt-baseline.xml")
 }
 
-tasks.named("check") {
-    dependsOn("ktlintCheck", "detekt")
-}
+tasks.named("check") { dependsOn("ktlintCheck", "detekt") }

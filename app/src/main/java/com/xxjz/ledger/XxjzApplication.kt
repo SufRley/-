@@ -1,6 +1,7 @@
 package com.xxjz.ledger
 
 import android.app.Application
+import com.xxjz.ledger.core.common.Logger
 import com.xxjz.ledger.data.local.db.AppDatabase
 import com.xxjz.ledger.data.local.seed.Seeder
 import com.xxjz.ledger.data.repository.DebtToAccountMigrator
@@ -43,6 +44,9 @@ class XxjzApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // core 模块不能反向依赖 app 读 BuildConfig，日志开关与版本号在这里从 app 层注入。
+        Logger.enabled = BuildConfig.DEBUG
+        com.xxjz.ledger.data.backup.BackupPayloadBuilder.APP_VERSION = BuildConfig.VERSION_NAME
         // 首启写入预置分类 / 默认账户 / 默认账本（幂等，见 Seeder）；
         // 随后把 v1.8.x 的旧借贷台账搬成借贷账户（v1.9.0，幂等，debt 表空了就跳过）
         scope.launch {

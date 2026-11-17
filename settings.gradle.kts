@@ -29,3 +29,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "XxjzLedger"
 include(":app")
+include(":core")
+include(":domain")
+include(":data")
+include(":feature:entry")
+include(":feature:asset")

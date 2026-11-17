@@ -17,7 +17,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.xxjz.ledger.core.common.ShortcutAction
 import com.xxjz.ledger.core.common.StartDestination
-import com.xxjz.ledger.core.common.readOnboardingDone
+import com.xxjz.ledger.domain.model.readOnboardingDone
 import com.xxjz.ledger.domain.repository.SettingsRepository
 
 /**

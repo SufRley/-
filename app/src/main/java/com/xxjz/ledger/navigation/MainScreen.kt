@@ -7,16 +7,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DonutLarge
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.DonutLarge
 import androidx.compose.material.icons.outlined.ReceiptLong
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -127,23 +124,3 @@ private fun tabIcon(
         MainTab.ACCOUNTS ->
             if (selected) Icons.Filled.AccountBalanceWallet else Icons.Outlined.AccountBalanceWallet
     }
-
-/**
- * 明细页右下角的悬浮「＋」（PRD D9）。
- *
- * 用 [FloatingActionButton] 而不是自绘 Surface：Ripple、阴影、动效都跟着 Material3 走，
- * 也让「什么时候显示」这件事由调用方（明细页）决定，不再需要主框架做路由判断。
- */
-@Composable
-fun AddFab(
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    FloatingActionButton(
-        onClick = onClick,
-        modifier = modifier.testTag("add_button"),
-        shape = CircleShape,
-    ) {
-        Icon(Icons.Filled.Add, contentDescription = "记一笔", modifier = Modifier.size(26.dp))
-    }
-}

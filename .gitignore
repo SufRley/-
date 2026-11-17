@@ -12,3 +12,4 @@
 *.keystore
 local.properties
 app/build
+**/build/

@@ -1,6 +1,7 @@
 package com.xxjz.ledger.widget
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -26,12 +27,11 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.xxjz.ledger.MainActivity
 import com.xxjz.ledger.core.common.DateUtils
-import com.xxjz.ledger.core.common.WidgetFormatter
-import com.xxjz.ledger.core.common.WidgetSummary
-import com.xxjz.ledger.core.common.WidgetSummaryLoader
 import com.xxjz.ledger.di.WidgetEntryPoint
+import com.xxjz.ledger.domain.model.WidgetFormatter
+import com.xxjz.ledger.domain.model.WidgetSummary
+import com.xxjz.ledger.domain.model.WidgetSummaryLoader
 import dagger.hilt.android.EntryPointAccessors
 
 /**
@@ -65,13 +65,16 @@ private fun LedgerWidgetContent(
 ) {
     val today = DateUtils.today()
     val lines = WidgetFormatter.lines(summary, monthLabel = "${today.monthValue} 月")
+    val launchIntent =
+        context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
     Column(
         modifier =
             GlanceModifier
                 .fillMaxSize()
                 .background(WidgetColors.surface)
                 .padding(12.dp)
-                .clickable(actionStartActivity(android.content.Intent(context, MainActivity::class.java))),
+                .clickable(actionStartActivity(launchIntent)),
         verticalAlignment = Alignment.Top,
     ) {
         Text(
